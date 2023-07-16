@@ -1,20 +1,22 @@
-import matplotlib.pyplot as plt
+import time
+import random
 import numpy as np
-import sys
-from sklearn.metrics import accuracy_score
-from brevitas.quant import Int8ActPerTensorFloat, Int8WeightPerTensorFloat
-import brevitas.nn as qnn
 import torch
-from tqdm import tqdm
-from brevitas.quant import Int8ActPerTensorFloat, Int8WeightPerTensorFloat
-from torch import nn
-from concrete.ml.torch.compile import compile_brevitas_qat_model
-
-from torch.utils.data import Dataset, DataLoader
-
-import torch
+import torch.nn as nn
+import torch.optim as optim
+from collections import OrderedDict
 from sklearn.datasets import make_classification, make_moons, make_circles
+from sklearn.metrics import accuracy_score
+from torch.utils.data import Dataset
+import matplotlib.pyplot as plt
 
+import brevitas.nn as qnn
+
+from brevitas import config
+
+from brevitas.quant import Int8ActPerTensorFloat, Int8WeightPerTensorFloat
+
+from brevitas.nn import QuantLinear, QuantReLU
 
 # Define a custom dataset class
 class CustomDataset(Dataset):
@@ -157,6 +159,8 @@ class QuantCustomModel(nn.Module):
         """
         super().__init__()
 
+        self.n_bits = n_bits
+
         self.quant_input = qnn.QuantIdentity(
             bit_width=n_bits, act_quant=act_quant, return_quant_tensor=True
         )
@@ -188,18 +192,20 @@ class QuantCustomModel(nn.Module):
         x = self.linear2(x)
         return x.value
 
-
 class CustomNeuralNet(nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes):
+    def __init__(self,
+        input_shape: int,
+        output_shape: int,
+        hidden_shape: int = 100):
         super(CustomNeuralNet, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
+        self.linear1 = nn.Linear(input_shape, hidden_shape)
         self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(hidden_size, num_classes)
+        self.linear2 = nn.Linear(hidden_shape, output_shape)
 
     def forward(self, x):
-        out = self.fc1(x)
+        out = self.linear1(x)
         out = self.relu(out)
-        out = self.fc2(out)
+        out = self.linear2(out)
         return out
     def predict(self, x):
         with torch.no_grad():
@@ -208,7 +214,7 @@ class CustomNeuralNet(nn.Module):
         return predicted.numpy()
 
 
-def plot_decision_boundary(model, dataset):
+def plot_decision_boundary(model, dataset, title, qmodel=None):
     # Generate a grid of points within the input range
     X, y = dataset[0], dataset[1]
     x_min, x_max = X[:, 0].min() - 0.5, X[:, 0].max() + 0.5
@@ -221,7 +227,12 @@ def plot_decision_boundary(model, dataset):
     grid_tensor = torch.tensor(grid, dtype=torch.float32)
 
     # Make predictions for each point in the grid
-    Z = model.predict(grid_tensor)
+    if isinstance(model, QuantCustomModel) and qmodel is not None:
+        Z = qmodel.forward(grid_tensor.numpy(), fhe="simulate")
+        Z = Z.argmax(1)
+    else:
+        Z = model.predict(grid_tensor)
+
     Z = Z.reshape(xx.shape)
 
     # Create a contour plot
@@ -234,8 +245,128 @@ def plot_decision_boundary(model, dataset):
         plt.scatter(class_X[:, 0], class_X[:, 1], label=f"Class {class_label}", edgecolors='k', alpha=0.7)
     plt.xlabel('X1')
     plt.ylabel('X2')
-    plt.title('Decision Boundaries')
+    # Remove ticks on both x and y axes
+    plt.xticks([])
+    plt.yticks([])
+    plt.title(f'{title} decision Boundary')
     plt.legend()
     
     plt.show()
 
+
+def mapping_keys(pre_trained_weights, model: nn.Module, device: str) -> nn.Module:
+
+    """
+    Initialize the quantized model with pre-trained fp32 weights.
+
+    Args:
+        pre_trained_weights (Dict): The state_dict of the pre-trained fp32 model.
+        model (nn.Module): The Brevitas model.
+        device (str): Device type.
+
+    Returns:
+        Callable: The quantized model with the pre-trained state_dict.
+    """
+
+    # Brevitas requirement to ignore missing keys
+    config.IGNORE_MISSING_KEYS = True
+
+    old_keys = list(pre_trained_weights.keys())
+    new_keys = list(model.state_dict().keys())
+    new_state_dict = OrderedDict()
+
+    for old_key, new_key in zip(old_keys, new_keys):
+        new_state_dict[new_key] = pre_trained_weights[old_key]
+
+    model.load_state_dict(new_state_dict)
+    model = model.to(device)
+
+    return model
+
+def train(
+    model,
+    X_train,
+    X_test,
+    y_train,
+    y_test,
+    path="checkpoint.pt",
+    step=10,
+    learning_rate=0.001,
+    epochs=5000,
+    verbose=False,
+    seed=23,
+    gamma=0.1,
+    milestones=[5],
+):
+    # Define the loss function and optimizer
+    torch.manual_seed(seed)
+    random.seed(seed)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+    # Define the learning rate scheduler
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
+
+    # Training loop
+    for epoch in range(epochs):
+        # Forward pass
+        outputs = model(X_train)
+        loss = criterion(outputs, y_train)
+        loss_test = criterion(model(X_test), y_test)
+
+        # Backward and optimize
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        # Apply the learning rate scheduler
+        scheduler.step()
+
+        if (epoch + 1) % step == 0 and verbose:
+            print(
+                f"Epoch [{(epoch + 1):>{len(str(epochs))}} / {epochs}], "
+                f"Train Loss: {loss.item():.2f}, Test Loss: {loss_test.item():.2f}, "
+                f"Learning Rate: {scheduler.get_last_lr()[0]}"
+            )
+
+    # Test Evaluation
+    with torch.no_grad():
+        # Switch to evaluation mode
+        model.eval()
+
+        # Forward pass on the testing set
+        outputs = model(X_test)
+        _, predicted = torch.max(outputs.data, 1)
+
+        # Calculate accuracy
+        test_accuracy = accuracy_score(y_test, predicted)
+
+    # Train Evaluation
+    with torch.no_grad():
+        # Switch to evaluation mode
+        model.eval()
+
+        # Forward pass on the testing set
+        outputs = model(X_train)
+        _, predicted = torch.max(outputs.data, 1)
+
+        # Calculate accuracy
+        train_accuracy = accuracy_score(y_train, predicted)
+
+    torch.save(model.state_dict(), path)
+
+    print(f"\nTrain accuracy: {train_accuracy} vs Test accuracy: {test_accuracy}")
+
+def torch_evaluation(model, X_data, y_data, device):
+    with torch.no_grad():
+        # Switch to evaluation mode
+        model.eval()
+
+        # Forward pass on the testing set
+        outputs = model(X_data.to(device))
+        _, predicted = torch.max(outputs.data, 1)
+
+    # Calculate accuracy
+    accuracy = accuracy_score(y_data, predicted.cpu().detach().numpy())
+    print("Accuracy:", accuracy)
