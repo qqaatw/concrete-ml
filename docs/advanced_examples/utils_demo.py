@@ -1,6 +1,7 @@
 import time
 import random
 import numpy as np
+from matplotlib.colors import ListedColormap
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -47,21 +48,21 @@ def plot_datasets():
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     
     # Plot make_classification dataset
-    scatter = axes[0].scatter(X_clf[:, 0], X_clf[:, 1], c=y_clf, cmap='bwr', edgecolors='k')
+    scatter = axes[0].scatter(X_clf[:, 0], X_clf[:, 1], c=y_clf, cmap='coolwarm', edgecolors='k')
     axes[0].set_title('make_classification')
     axes[0].set_xticks([])
     axes[0].set_yticks([])
     axes[0].legend(handles=scatter.legend_elements()[0], labels=['Class 0', 'Class 1'])
     
     # Plot make_moons dataset
-    scatter = axes[1].scatter(X_moons[:, 0], X_moons[:, 1], c=y_moons, cmap='bwr', edgecolors='k')
+    scatter = axes[1].scatter(X_moons[:, 0], X_moons[:, 1], c=y_moons, cmap='coolwarm', edgecolors='k')
     axes[1].set_title('make_moons')
     axes[1].set_xticks([])
     axes[1].set_yticks([])
     axes[1].legend(handles=scatter.legend_elements()[0], labels=['Class 0', 'Class 1'])
     
     # Plot make_circles dataset
-    scatter = axes[2].scatter(X_circles[:, 0], X_circles[:, 1], c=y_circles, cmap='bwr', edgecolors='k')
+    scatter = axes[2].scatter(X_circles[:, 0], X_circles[:, 1], c=y_circles, cmap='coolwarm', edgecolors='k')
     axes[2].set_title('make_circles')
     axes[2].set_xticks([])
     axes[2].set_yticks([])
@@ -226,6 +227,9 @@ def plot_decision_boundary(model, dataset, title, qmodel=None):
     grid = np.c_[xx.ravel(), yy.ravel()]
     grid_tensor = torch.tensor(grid, dtype=torch.float32)
 
+    cm = plt.cm.RdBu
+    cm_bright = ListedColormap(["#FF0000", "#0000FF"])
+
     # Make predictions for each point in the grid
     if isinstance(model, QuantCustomModel) and qmodel is not None:
         Z = qmodel.forward(grid_tensor.numpy(), fhe="simulate")
@@ -236,13 +240,15 @@ def plot_decision_boundary(model, dataset, title, qmodel=None):
     Z = Z.reshape(xx.shape)
 
     # Create a contour plot
-    plt.contourf(xx, yy, Z, alpha=0.8)
+    plt.contourf(xx, yy, Z, alpha=0.6,  cmap="coolwarm")
 
     # Plot the training samples with labels
     classes = np.unique(y)
-    for class_label in classes:
+    for class_label, color in zip(classes, ["blue", "red"]):
         class_X = X[y == class_label]
-        plt.scatter(class_X[:, 0], class_X[:, 1], label=f"Class {class_label}", edgecolors='k', alpha=0.7)
+        plt.scatter(class_X[:, 0], class_X[:, 1], label=f"Class {class_label}",             
+                c=color,
+                edgecolors="k", alpha=0.8)
     plt.xlabel('X1')
     plt.ylabel('X2')
     # Remove ticks on both x and y axes
