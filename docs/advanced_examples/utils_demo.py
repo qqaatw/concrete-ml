@@ -1,4 +1,3 @@
-import time
 import random
 import numpy as np
 from matplotlib.colors import ListedColormap
@@ -17,7 +16,6 @@ from brevitas import config
 
 from brevitas.quant import Int8ActPerTensorFloat, Int8WeightPerTensorFloat
 
-from brevitas.nn import QuantLinear, QuantReLU
 
 # Define a custom dataset class
 class CustomDataset(Dataset):
@@ -34,15 +32,15 @@ class CustomDataset(Dataset):
 
 def plot_datasets():
     # Generate make_classification dataset
-    X_clf, y_clf = make_classification(n_samples=500, n_features=2, n_informative=2, n_redundant=0, random_state=42)
+    X_clf, y_clf = make_classification(n_samples=1000, n_features=2, n_informative=2, n_redundant=0, random_state=42)
     rng = np.random.RandomState(2)
     X_clf += 2 * rng.uniform(size=X_clf.shape)
     
     # Generate make_moons dataset
-    X_moons, y_moons = make_moons(n_samples=500, noise=0.2, random_state=42)
+    X_moons, y_moons = make_moons(n_samples=1000, noise=0.2, random_state=42)
     
     # Generate make_circles dataset
-    X_circles, y_circles = make_circles(n_samples=500, noise=0.2, factor=0.5, random_state=42)
+    X_circles, y_circles = make_circles(n_samples=1000, noise=0.2, factor=0.5, random_state=42)
     
     # Create subplots
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
@@ -87,54 +85,6 @@ def plot_data(X_train, X_test, y_train, y_test, title):
     plt.show();
 
 
-# def plot_counter_plot(clf, X_train, X_test, y_train, y_test):
-
-
-#     if hasattr(clf, "n_bits"):
-#         clf.compile(X_train)
-#         y_pred = clf.predict(X_test, fhe="simulate")
-#         accuracy = accuracy_score(y_test, y_pred)
-#         title = f"Concrete ML decision boundaries with {clf.n_bits}-bits of quantization"
-#     else:
-#         print("sklearn")
-#         y_pred = clf.predict(X_test)
-#         accuracy = accuracy_score(y_test, y_pred)
-#         title = f"Scikit-learn decision boundaries"
-    
-#     plt.ioff()
-#     plt.clf()
-#     fig, ax = plt.subplots(1, figsize=(12, 8))
-#     fig.patch.set_facecolor("white")
-
-#     X = np.concatenate((X_train, X_test))
-#     b_min = np.min(X, axis=0)
-#     b_max = np.max(X, axis=0)
-
-#     x_test_grid, y_test_grid = np.meshgrid(
-#         np.linspace(b_min[0], b_max[0], 50), np.linspace(b_min[1], b_max[1], 50)
-#     )
-#     x_grid_test = np.vstack([x_test_grid.ravel(), y_test_grid.ravel()]).transpose()
-#     y_score_grid = clf.predict_proba(x_grid_test)[:, 1]
-
-#     ax.contourf(x_test_grid, y_test_grid, y_score_grid.reshape(x_test_grid.shape), cmap="coolwarm", alpha=0.7)
-#     CS1 = ax.contour(
-#         x_test_grid,
-#         y_test_grid,
-#         y_score_grid.reshape(x_test_grid.shape),
-#         levels=[0.5],
-#         linewidths=2,
-#     )
-
-#     CS1.collections[0].set_label(f"title | Accuracy = {accuracy:.2%}")
-#     if hasattr(clf, "n_bits"):
-#         CS1.collections[0].set_label(f"{clf.fhe_circuit.graph.maximum_integer_bit_width()} max bit-width in the circuit")
-#     ax.scatter(X_train[:, 0], X_train[:, 1], c=y_train, marker="o", cmap="jet", label="Train data")
-#     ax.scatter(X_test[:, 0], X_test[:, 1], c=y_test, marker="x", cmap="jet", label="Test data")
-#     ax.legend(loc="upper right")
-#     ax.set_title(title)
-#     plt.show()
-
-
 class QuantCustomModel(nn.Module):
     """A small quantized network with Brevitas, trained on make_classification."""
 
@@ -175,6 +125,7 @@ class QuantCustomModel(nn.Module):
         )
 
         self.relu1 = qnn.QuantReLU(return_quant_tensor=True, bit_width=n_bits, act_quant=act_quant)
+        
         self.linear2 = qnn.QuantLinear(
             in_features=hidden_shape,
             out_features=output_shape,
