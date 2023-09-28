@@ -27,7 +27,7 @@ from ..deployment.utils import filter_logs, wait_for_connection_to_be_available
 
 DATE_FORMAT: str = "%Y_%m_%d_%H_%M_%S"
 # More up to date public Concrete ML AWS AMI
-DEFAULT_CML_AMI_ID: str = "ami-0d7427e883fa00ff3"
+DEFAULT_CML_AMI_ID: str = "ami-0f0eb8460d91d3f51"
 
 
 class AWSInstance:
