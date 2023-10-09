@@ -1986,17 +1986,18 @@ class SklearnKNeighborsMixin(BaseEstimator, sklearn.base.BaseEstimator, ABC):
             labels = labels + cnp.zeros(labels.shape)
 
             n, k = x.size, self.n_neighbors
+            # Determine the number of stages for a sequence of length n
             ln2n = int(numpy.ceil(numpy.log2(n)))
 
-            # Number of stages
+            # Stage loop
             for t in range(ln2n - 1, -1, -1):
                 p = 2**t
                 r = 0
-                # d: Length of the bitonic sequence
+                # d: The comparison distance
                 d = p
-
-                with cnp.tag(f"top_k_t_{t}"):
-                    for bq in range(ln2n - 1, t - 1, -1):
+                # Number of passes for each stage
+                for bq in range(ln2n - 1, t - 1, -1):
+                    with cnp.tag(f"Stage_{t}_pass_{bq}"):
                         q = 2**bq
                         # Determine the range of indexes to be compared
                         range_i = numpy.array(
@@ -2019,32 +2020,36 @@ class SklearnKNeighborsMixin(BaseEstimator, sklearn.base.BaseEstimator, ABC):
                         labels_a = gather1d(labels, range_i)  #
                         labels_b = gather1d(labels, range_i + d)  # idx[range_i + d]
 
-                        with cnp.tag("max"):
+                        with cnp.tag("diff"):
                             # Select max(a, b)
                             diff = b - a
-                            max_x = a + numpy.maximum(0, diff)
-
-                        # Swap if a > b
-                        # x[range_i] = max_x(a, b): First bitonic sequence gets min(a, b)
-                        x = scatter1d(x, a + b - max_x, range_i)
-                        # x[range_i + d] = min(a, b): Second bitonic sequence gets max(a, b)
-                        x = scatter1d(x, max_x, range_i + d)
 
                         with cnp.tag("Rounded_sign"):
                             diff = cnp.round_bit_pattern(diff, lsbs_to_remove=self.rounder)
-                            is_a_greater_than_b = diff >= 0
 
-                        # Update labels array according to the max items
-                        with cnp.tag("label_swap"):
+                        with cnp.tag("max_value"):
+                            max_x = a + numpy.maximum(0, diff)
+
+                        with cnp.tag("swap_max_value"):
+                            # Swap if a > b
+                            # x[range_i] = max_x(a, b): First bitonic sequence gets min(a, b)
+                            x = scatter1d(x, a + b - max_x, range_i)
+                            # x[range_i + d] = min(a, b): Second bitonic sequence gets max(a, b)
+                            x = scatter1d(x, max_x, range_i + d)
+
+                        # Update labels array according to the max value
+                        with cnp.tag("max_label"):
+                            is_a_greater_than_b = diff > 0
                             max_labels = labels_a + (labels_b - labels_a) * is_a_greater_than_b
 
-                        with cnp.tag("label_set"):
+                        with cnp.tag("swap_max_label"):
                             labels = scatter1d(labels, labels_a + labels_b - max_labels, range_i)
                             labels = scatter1d(labels, max_labels, range_i + d)
 
                         # Update
-                        with cnp.tag("update_indices"):
+                        with cnp.tag("update"):
                             comparisons[range_i + d] = comparisons[range_i + d] + 1
+                            # Reduce the comparison distance by half
                             d = q - p
                             r = p
 
@@ -2086,6 +2091,7 @@ class SklearnKNeighborsMixin(BaseEstimator, sklearn.base.BaseEstimator, ABC):
         else:
             configuration = kwargs.get("configuration", None)
             kwargs["configuration"] = force_auto_adjust_rounder_in_configuration(configuration)
+
         return BaseEstimator.compile(self, *args, **kwargs)
 
     def post_processing(self, y_preds: numpy.ndarray) -> numpy.ndarray:
