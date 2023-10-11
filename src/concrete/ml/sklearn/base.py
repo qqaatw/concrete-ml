@@ -258,6 +258,15 @@ class BaseEstimator:
         assert isinstance(self.fhe_circuit_, Circuit) or self.fhe_circuit_ is None
         return self.fhe_circuit_
 
+    @fhe_circuit.setter
+    def fhe_circuit(self, value: Circuit) -> None:
+        """Set the FHE circuit.
+
+        Args:
+            value (Circuit): The FHE circuit to set.
+        """
+        self.fhe_circuit_ = value
+
     def _sklearn_model_is_not_fitted_error_message(self) -> str:
         return (
             f"The underlying model (class: {self.sklearn_model_class}) is not fitted and thus "
@@ -548,7 +557,7 @@ class BaseEstimator:
 
         # Jit compiler is now deprecated and will soon be removed, it is thus forced to False
         # by default
-        self.fhe_circuit_ = module_to_compile.compile(
+        self.fhe_circuit = module_to_compile.compile(
             inputset,
             configuration=configuration,
             artifacts=artifacts,
@@ -562,9 +571,6 @@ class BaseEstimator:
             jit=False,
         )
 
-        # For mypy
-        assert isinstance(self.fhe_circuit, Circuit)
-
         # CRT simulation is not supported yet
         # TODO: https://github.com/zama-ai/concrete-ml-internal/issues/3841
         if not USE_OLD_VL:
@@ -572,6 +578,7 @@ class BaseEstimator:
 
         self._is_compiled = True
 
+        assert isinstance(self.fhe_circuit, Circuit)
         return self.fhe_circuit
 
     @abstractmethod
@@ -876,6 +883,10 @@ class QuantizedTorchEstimatorMixin(BaseEstimator):
     @property
     def fhe_circuit(self) -> Circuit:
         return self.quantized_module_.fhe_circuit
+
+    @fhe_circuit.setter
+    def fhe_circuit(self, value: Circuit) -> None:
+        self.quantized_module_.fhe_circuit = value
 
     def get_params(self, deep: bool = True) -> dict:
         """Get parameters for this estimator.
@@ -1772,7 +1783,11 @@ class SklearnKNeighborsMixin(BaseEstimator, sklearn.base.BaseEstimator, ABC):
         self._topk_labels: numpy.ndarray
         # Number of bits to keep
         self.rounding_threshold_bits = rounding_threshold_bits
-        self.rounder = cnp.AutoRounder(target_msbs=rounding_threshold_bits)
+        self.rounder = (
+            cnp.AutoRounder(target_msbs=rounding_threshold_bits)
+            if rounding_threshold_bits != -1
+            else None
+        )
 
         BaseEstimator.__init__(self)
 
@@ -1993,7 +2008,7 @@ class SklearnKNeighborsMixin(BaseEstimator, sklearn.base.BaseEstimator, ABC):
             for t in range(ln2n - 1, -1, -1):
                 p = 2**t
                 r = 0
-                # d: The comparison distance
+                # d: Length of the bitonic sequence
                 d = p
                 # Number of passes for each stage
                 for bq in range(ln2n - 1, t - 1, -1):
@@ -2024,9 +2039,9 @@ class SklearnKNeighborsMixin(BaseEstimator, sklearn.base.BaseEstimator, ABC):
                             # Select max(a, b)
                             diff = b - a
 
-                        with cnp.tag("Rounded_sign"):
-                            diff = cnp.round_bit_pattern(diff, lsbs_to_remove=self.rounder)
-
+                        if self.rounder is not None:
+                            with cnp.tag("Rounded_sign"):
+                                diff = cnp.round_bit_pattern(diff, lsbs_to_remove=self.rounder)
                         with cnp.tag("max_value"):
                             max_x = a + numpy.maximum(0, diff)
 
@@ -2037,7 +2052,7 @@ class SklearnKNeighborsMixin(BaseEstimator, sklearn.base.BaseEstimator, ABC):
                             # x[range_i + d] = min(a, b): Second bitonic sequence gets max(a, b)
                             x = scatter1d(x, max_x, range_i + d)
 
-                        # Update labels array according to the max value
+                        # Update labels array according to the max items
                         with cnp.tag("max_label"):
                             is_a_greater_than_b = diff > 0
                             max_labels = labels_a + (labels_b - labels_a) * is_a_greater_than_b
@@ -2049,7 +2064,7 @@ class SklearnKNeighborsMixin(BaseEstimator, sklearn.base.BaseEstimator, ABC):
                         # Update
                         with cnp.tag("update"):
                             comparisons[range_i + d] = comparisons[range_i + d] + 1
-                            # Reduce the comparison distance by half
+                            # Reduce the
                             d = q - p
                             r = p
 
@@ -2060,8 +2075,11 @@ class SklearnKNeighborsMixin(BaseEstimator, sklearn.base.BaseEstimator, ABC):
             distance_matrix = pairwise_euclidean_distance(q_X)
 
         # Reduce the bit-width precion to get smaller accumulators
-        with cnp.tag("Rounded distance"):
-            distance_matrix = cnp.round_bit_pattern(distance_matrix, lsbs_to_remove=self.rounder)
+        if self.rounder is not None:
+            with cnp.tag("Rounded distance"):
+                distance_matrix = cnp.round_bit_pattern(
+                    distance_matrix, lsbs_to_remove=self.rounder
+                )
 
         # The square root in the Euclidean distance calculation is not applied to speed up FHE
         # computations.
@@ -2080,17 +2098,18 @@ class SklearnKNeighborsMixin(BaseEstimator, sklearn.base.BaseEstimator, ABC):
             return configuration
 
         # If a configuration instance is given as a positional parameter, set auto_adjust_rounder
-        if len(args) >= 2:
-            configuration = force_auto_adjust_rounder_in_configuration(args[1])
-            args_list = list(args)
-            args_list[1] = configuration
-            args = tuple(args_list)
+        if self.rounder is not None:
+            if len(args) >= 2:
+                configuration = force_auto_adjust_rounder_in_configuration(args[1])
+                args_list = list(args)
+                args_list[1] = configuration
+                args = tuple(args_list)
 
-        # Else, retrieve the configuration in kwargs if it exists, or create a new one, and set the
-        # auto_adjust_rounder
-        else:
-            configuration = kwargs.get("configuration", None)
-            kwargs["configuration"] = force_auto_adjust_rounder_in_configuration(configuration)
+            # Else, retrieve the configuration in kwargs if it exists, or create a new one, and set the
+            # auto_adjust_rounder
+            else:
+                configuration = kwargs.get("configuration", None)
+                kwargs["configuration"] = force_auto_adjust_rounder_in_configuration(configuration)
 
         return BaseEstimator.compile(self, *args, **kwargs)
 
@@ -2122,11 +2141,11 @@ class SklearnKNeighborsMixin(BaseEstimator, sklearn.base.BaseEstimator, ABC):
 
         topk_labels = []
         for query in X:
-            topk_labels.append(BaseEstimator.predict(self, query[None], fhe=fhe))
+            topk_labels.append(super().predict(query[None], fhe))
 
         y_preds = self.post_processing(numpy.array(topk_labels))
 
-        return y_preds
+        return numpy.array(y_preds)
 
 
 class SklearnKNeighborsClassifierMixin(SklearnKNeighborsMixin, sklearn.base.ClassifierMixin, ABC):
