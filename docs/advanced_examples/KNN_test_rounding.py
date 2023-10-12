@@ -9,6 +9,7 @@ from concrete.ml.sklearn import KNeighborsClassifier as ConcreteKNeighborsClassi
 ### Data-set generation
 def generate_dataset():
     def make_dataset(type, n, n_features):
+        print(n, n_features)
         if type == "moon":
             X, y = make_moons(n_samples=(n, n_features), noise=0.2)
         elif type == "circles":
@@ -18,8 +19,8 @@ def generate_dataset():
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5)
         return X_train, X_test, y_train, y_test
 
-    dataset_size = [43]
-    dims = [2]
+    dataset_size = [50]
+    dims = [20]
     datasets = []
 
     for n in dataset_size:
@@ -29,10 +30,10 @@ def generate_dataset():
             # X_train, X_test, y_train, y_test = make_dataset(type="moon", n=n, n_features=dim)
             # datasets.append([X_train, X_test, y_train, y_test, "moon"])
 
-            X_train, X_test, y_train, y_test = make_dataset(type="circles", n=n, n_features=dim)
-            datasets.append([X_train, X_test, y_train, y_test, "circle"])
-            # X_train, X_test, y_train, y_test = make_dataset(type="classif", n=n, n_features=dim)
-            # datasets.append([X_train, X_test, y_train, y_test, "classif"])
+            # X_train, X_test, y_train, y_test = make_dataset(type="circles", n=n, n_features=dim)
+            # datasets.append([X_train, X_test, y_train, y_test, "circle"])
+            X_train, X_test, y_train, y_test = make_dataset(type="classif", n=n, n_features=dim)
+            datasets.append([X_train, X_test, y_train, y_test, "classif"])
 
     return datasets
 
@@ -47,7 +48,7 @@ if __name__ == "__main__":
     datasets = generate_dataset()
     n_neighbors = 3
     list_bits = [3]
-    list_rounding = [3, 4, 5, 6, 7]
+    list_rounding = [4, 5, -1, 6]
 
     list_fhe_exec_time = []
     list_compilation_time = []
