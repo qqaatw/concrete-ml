@@ -19,7 +19,7 @@ def generate_dataset():
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5)
         return X_train, X_test, y_train, y_test
 
-    dataset_size = [50]
+    dataset_size = [60]
     dims = [20]
     datasets = []
 
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     datasets = generate_dataset()
     n_neighbors = 3
     list_bits = [3]
-    list_rounding = [4, 5, -1, 6]
+    list_rounding = [4, 5, 6, -1]
 
     list_fhe_exec_time = []
     list_compilation_time = []
