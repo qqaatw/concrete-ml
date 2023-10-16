@@ -19,19 +19,19 @@ def generate_dataset():
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5)
         return X_train, X_test, y_train, y_test
 
-    dataset_size = [60]
-    dims = [20]
+    dataset_size = [20, 50, 60]
+    dims = [10, 15, 20, 25]
     datasets = []
 
     for n in dataset_size:
         for dim in dims:
             # Split the data-set into a train and testing sets
 
-            # X_train, X_test, y_train, y_test = make_dataset(type="moon", n=n, n_features=dim)
-            # datasets.append([X_train, X_test, y_train, y_test, "moon"])
+            X_train, X_test, y_train, y_test = make_dataset(type="moon", n=n, n_features=dim)
+            datasets.append([X_train, X_test, y_train, y_test, "moon"])
 
-            # X_train, X_test, y_train, y_test = make_dataset(type="circles", n=n, n_features=dim)
-            # datasets.append([X_train, X_test, y_train, y_test, "circle"])
+            X_train, X_test, y_train, y_test = make_dataset(type="circles", n=n, n_features=dim)
+            datasets.append([X_train, X_test, y_train, y_test, "circle"])
             X_train, X_test, y_train, y_test = make_dataset(type="classif", n=n, n_features=dim)
             datasets.append([X_train, X_test, y_train, y_test, "classif"])
 
@@ -48,17 +48,17 @@ if __name__ == "__main__":
     datasets = generate_dataset()
     n_neighbors = 3
     list_bits = [3]
-    list_rounding = [4, 5, 6, -1]
+    list_rounding = [-1]
 
     list_fhe_exec_time = []
     list_compilation_time = []
     list_key_gey_time = []
-    list_score_sk, list_score_simulate, list_score_fhe = [], [], []
+    list_score_sk, list_score_simulate, list_score_disable, list_score_fhe = [], [], [], []
     list_bitwidth_circuit = []
 
     verbose = True
-    # with open("history.txt", "w") as f:
-    #     f.write("type,n,dims,qbit,rounding,cbit,compile_time,key_time,sk_score, simul_score,fhe_time\n")
+    with open("history2.txt", "w") as f:
+        f.write("type,n,dims,qbit,rounding,cbit,compile_time,key_time,sk_score,simul_score,sk_disable,fhe_time\n")
                         
     for dataset in datasets:
         X_train, X_test, y_train, y_test, t = dataset
@@ -85,7 +85,7 @@ if __name__ == "__main__":
                 list_compilation_time.append(end_time)
                 list_bitwidth_circuit.append(cbit)
 
-                with open("history.txt", "a") as f:
+                with open("history2.txt", "a") as f:
                     f.write(f"{t},{X_train.shape[0]},{X_train.shape[1]},{bit},{rounding},{cbit},"
                     f"{list_compilation_time[-1]},")
 
@@ -97,22 +97,27 @@ if __name__ == "__main__":
                     print(f"Key generation time: {end_time:.2f} seconds")
                 list_key_gey_time.append(end_time)
 
-                with open("history.txt", "a") as f:
+                with open("history2.txt", "a") as f:
                     f.write(f"{list_key_gey_time[-1]},")
 
                 # scikit-learn inference
                 predict_sklearn = sklearn_model.predict(X_test)
                 score_sklearn = accuracy_score(y_test, predict_sklearn)
 
-                # b- FHE simulation inference
+                # b- FHE disable inference
+                pred_cml_disable = concrete_knn.predict(X_test, fhe="disable")
+                score_cml_disable = accuracy_score(y_test, pred_cml_disable)
+
+                # c- FHE simulation inference
                 pred_cml_simulate = concrete_knn.predict(X_test, fhe="simulate")
                 score_cml_simulate = accuracy_score(y_test, pred_cml_simulate)
 
                 list_score_sk.append(score_sklearn)
                 list_score_simulate.append(score_cml_simulate)
+                list_score_disable.append(score_cml_disable)
 
-                with open("history.txt", "a") as f:
-                    f.write(f"{list_score_sk[-1]},{list_score_simulate[-1]},")
+                with open("history2.txt", "a") as f:
+                    f.write(f"{list_score_sk[-1]},{list_score_simulate[-1]},{list_score_disable[-1]},")
                     
                 # c- FHE inference
                 time_begin = time.time()
@@ -124,8 +129,8 @@ if __name__ == "__main__":
                 list_fhe_exec_time.append(end_time)
 
                 if verbose:
-                    print(f"{list_score_sk[-1]=} - {list_score_simulate[-1]=} - Exec time = {list_fhe_exec_time[-1]=}\n")
+                    print(f"{list_score_sk[-1]=} - {list_score_simulate[-1]=} - Exec time = {list_fhe_exec_time[-1]=}, {list_score_disable[-1]}\n")
 
-                with open("history.txt", "a") as f:
+                with open("history2.txt", "a") as f:
                     f.write(f"{list_fhe_exec_time[-1]}\n")
                                     
