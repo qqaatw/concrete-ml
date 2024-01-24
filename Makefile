@@ -27,7 +27,14 @@ CONCRETE_PYTHON_VERSION="concrete-python==2.5.0"
 # --pyproject-toml-file pyproject.toml \
 # --get-pip-install-spec-for-dependency concrete-python)"
 
-.PHONY: setup_env # Set up the environment
+# If one wants to use a local CP repository (devs), rely on make install_local_cp
+# Note: you need concrete-python = ">=0.0.0" in pyproject.toml, then make update_env
+CP_LOCAL ?= $(shell realpath $(PWD)/../concrete/frontends/concrete-python)
+CP_LOCAL_COMPILER_BUILD_DIRECTORY=$(shell realpath $(CP_LOCAL)/../../compilers/concrete-compiler/compiler/build)
+export PATH := $(PWD)/.venv/bin:$(PATH)
+
+
+.PHONY: setup_env setup_env_deps # Set up the environment
 setup_env:
 	@# The keyring install is to allow pip to fetch credentials for our internal repo if needed
 	PIP_INDEX_URL=https://pypi.org/simple \
@@ -823,3 +830,18 @@ run_all_use_case_examples:
 .PHONY: check_utils_use_case # Check that no utils.py are found in use_case_examples
 check_utils_use_case:
 	./script/make_utils/check_utils_in_use_case.sh
+
+.PHONY: install_local_cp
+install_local_cp:
+	# TODO: use same trick as CP
+	# poetry lock
+	#make concretecompiler python-bindings
+	#poetry run pip install auditwheel # required to fix the wheel
+	#COMPILER_BUILD_DIRECTORY=$(CP_LOCAL_COMPILER_BUILD_DIRECTORY) poetry run pip install -e $(CP_LOCAL)
+	echo $(CP_LOCAL_COMPILER_BUILD_DIRECTORY)
+	cd $(CP_LOCAL) && COMPILER_BUILD_DIRECTORY=$(CP_LOCAL_COMPILER_BUILD_DIRECTORY) make whl
+	poetry run pip install --force-reinstall $(CP_LOCAL)/dist/* --no-deps
+
+.PHONY: uninstall_local_cp
+uninstall_local_cp:
+	poetry run python -m pip install -U --pre "$(CP_VERSION_SPEC_FOR_RC)" --no-deps
