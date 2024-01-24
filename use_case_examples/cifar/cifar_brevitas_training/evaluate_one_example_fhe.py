@@ -4,7 +4,7 @@ from functools import partial
 from pathlib import Path
 
 import torch
-from concrete.fhe.compilation.configuration import Configuration
+from concrete.fhe.compilation.configuration import Configuration, Exactness, MultiParameterStrategy
 from models import cnv_2w2a
 from torch.utils.data import DataLoader
 from trainer import get_test_set
@@ -78,6 +78,8 @@ configuration = Configuration(
     enable_unsafe_features=True,
     use_insecure_key_cache=True,
     insecure_key_cache_location=KEYGEN_CACHE_DIR,
+    rounding_exactness=Exactness.APPROXIMATE,
+    multi_parameter_strategy=MultiParameterStrategy.PRECISION_AND_NORM2,
 )
 
 print("Compiling the model.")
