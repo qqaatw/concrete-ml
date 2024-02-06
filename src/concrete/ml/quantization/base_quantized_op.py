@@ -979,6 +979,6 @@ class QuantizedMixingOp(QuantizedOp, is_utility=True):
         assert isinstance(lsbs_value, int)
 
         if lsbs_value > 0:
-            x = fhe.round_bit_pattern(x, lsbs_to_remove=lsbs_value)
+            x = fhe.truncate_bit_pattern(x, lsbs_to_remove=lsbs_value)
 
         return x
