@@ -117,3 +117,4 @@ If you have built awesome projects using Concrete ML, feel free to let us know a
 Test survey [link](https://zama-test.gitbook.io/concrete-ml)
 {% endhint %}
 
+Test survey [link](https://zama-test.gitbook.io/concrete-ml)
