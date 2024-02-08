@@ -114,6 +114,6 @@ If you have built awesome projects using Concrete ML, feel free to let us know a
 * Do you have a question about Zama? Write us on [Twitter](https://twitter.com/zama\_fhe) or send us an email at: **hello@zama.ai**
 
 {% hint style="info" %}
-Test survey link
+Test survey [link](./#support)
 {% endhint %}
 
