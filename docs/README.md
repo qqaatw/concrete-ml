@@ -8,12 +8,11 @@ Concrete ML is an open source, privacy-preserving, machine learning framework ba
 
 Fully Homomorphic Encryption is an encryption technique that allows computing directly on encrypted data, without needing to decrypt it. With FHE, you can build private-by-design applications without compromising on features. You can learn more about FHE in [this introduction](https://www.zama.ai/post/tfhe-deep-dive-part-1) or by joining the [FHE.org](https://fhe.org) community.
 
-Training on encrypted data provides the highest level of privacy but is slower than training on clear data. Federated learning is an alternative approach, where data privacy can be ensured by using a trusted gradient aggregator, coupled with optional _differential privacy_ instead of encryption. Concrete ML
-can import linear models, including logistic regression, that are trained using federated learning using the [`from_sklearn` function](./built-in-models/linear.md#pre-trained-models).
+Training on encrypted data provides the highest level of privacy but is slower than training on clear data. Federated learning is an alternative approach, where data privacy can be ensured by using a trusted gradient aggregator, coupled with optional _differential privacy_ instead of encryption. Concrete ML can import linear models, including logistic regression, that are trained using federated learning using the [`from_sklearn` function](built-in-models/linear.md#pre-trained-models).
 
 ## Example usage
 
-Here is a simple example of classification on encrypted data using logistic regression. More examples can be found [here](built-in-models/ml_examples.md).
+Here is a simple example of classification on encrypted data using logistic regression. More examples can be found [here](built-in-models/ml\_examples.md).
 
 ```python
 from sklearn.datasets import make_classification
@@ -51,10 +50,7 @@ print(f"Similarity: {(y_pred_fhe == y_pred_clear).mean():.1%}")
     # Similarity: 100.0%
 ```
 
-It is also possible to call encryption, model prediction, and decryption functions separately as follows.
-Executing these steps separately is equivalent to calling `predict_proba` on the model instance.
-
-<!--pytest-codeblocks:cont-->
+It is also possible to call encryption, model prediction, and decryption functions separately as follows. Executing these steps separately is equivalent to calling `predict_proba` on the model instance.
 
 ```python
 # Predict probability for a single example
@@ -81,9 +77,9 @@ print("Probability with encrypt/run/decrypt calls: ", y0)
 
 This example shows the typical flow of a Concrete ML model:
 
-- The model is trained on unencrypted (plaintext) data using scikit-learn. As FHE operates over integers, Concrete ML quantizes the model to use only integers during inference.
-- The quantized model is compiled to an FHE equivalent. Under the hood, the model is first converted to a Concrete Python program, then compiled.
-- Inference can then be done on encrypted data. The above example shows encrypted inference in the model-development phase. Alternatively, during [deployment](getting-started/cloud.md) in a client/server setting, the data is encrypted by the client, processed securely by the server, and then decrypted by the client.
+* The model is trained on unencrypted (plaintext) data using scikit-learn. As FHE operates over integers, Concrete ML quantizes the model to use only integers during inference.
+* The quantized model is compiled to an FHE equivalent. Under the hood, the model is first converted to a Concrete Python program, then compiled.
+* Inference can then be done on encrypted data. The above example shows encrypted inference in the model-development phase. Alternatively, during [deployment](getting-started/cloud.md) in a client/server setting, the data is encrypted by the client, processed securely by the server, and then decrypted by the client.
 
 ## Current limitations
 
@@ -101,18 +97,23 @@ Concrete ML is built on top of Zama's [Concrete](https://github.com/zama-ai/conc
 
 ## Online demos and tutorials
 
-Various tutorials are available for [built-in models](built-in-models/ml_examples.md) and [deep learning](deep-learning/examples.md). Several stand-alone demos for use cases can be found in the [Demos and Tutorials](getting-started/showcase.md) section.
+Various tutorials are available for [built-in models](built-in-models/ml\_examples.md) and [deep learning](deep-learning/examples.md). Several stand-alone demos for use cases can be found in the [Demos and Tutorials](getting-started/showcase.md) section.
 
 If you have built awesome projects using Concrete ML, feel free to let us know and we'll link to your work!
 
 ## Additional resources
 
-- [Dedicated Concrete ML community support](https://community.zama.ai/c/concrete-ml/8)
-- [Zama's blog](https://www.zama.ai/blog)
-- [FHE.org community](https://fhe.org)
+* [Dedicated Concrete ML community support](https://community.zama.ai/c/concrete-ml/8)
+* [Zama's blog](https://www.zama.ai/blog)
+* [FHE.org community](https://fhe.org)
 
 ## Support
 
-- Support forum: [https://community.zama.ai](https://community.zama.ai) (we answer in less than 24 hours).
-- Live discussion on the FHE.org Discord server: [https://discord.fhe.org](https://discord.fhe.org) (inside the #**concrete** channel).
-- Do you have a question about Zama? Write us on [Twitter](https://twitter.com/zama_fhe) or send us an email at: **hello@zama.ai**
+* Support forum: [https://community.zama.ai](https://community.zama.ai) (we answer in less than 24 hours).
+* Live discussion on the FHE.org Discord server: [https://discord.fhe.org](https://discord.fhe.org) (inside the #**concrete** channel).
+* Do you have a question about Zama? Write us on [Twitter](https://twitter.com/zama\_fhe) or send us an email at: **hello@zama.ai**
+
+{% hint style="info" %}
+Test survey link
+{% endhint %}
+
