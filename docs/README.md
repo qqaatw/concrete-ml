@@ -118,3 +118,5 @@ Test survey [link](https://zama-test.gitbook.io/concrete-ml)
 {% endhint %}
 
 Test survey [link](https://zama-test.gitbook.io/concrete-ml)
+
+![](<.gitbook/assets/Capture d’écran 2024-01-31 à 09.39.16.png>)
