@@ -114,9 +114,9 @@ If you have built awesome projects using Concrete ML, feel free to let us know a
 * Do you have a question about Zama? Write us on [Twitter](https://twitter.com/zama\_fhe) or send us an email at: **hello@zama.ai**
 
 {% hint style="info" %}
-Test survey [link](https://zama-test.gitbook.io/concrete-ml)
+Test survey [link](./)
 {% endhint %}
 
-Test survey [link](https://zama-test.gitbook.io/concrete-ml)
+[Test survey link](./#support)
 
 ![](<.gitbook/assets/Capture d’écran 2024-01-31 à 09.39.16.png>)
