@@ -22,7 +22,7 @@
 * [Neural Networks](built-in-models/neural-networks.md)
 * [Nearest Neighbors](built-in-models/nearest-neighbors.md)
 * [Pandas](built-in-models/pandas.md)
-* [Encrypted training](built-in-models/training.md)
+* [Encrypted Training](built-in-models/training.md)
 
 ## Deep Learning
 
@@ -35,7 +35,7 @@
 ## GUIDES
 
 * [Prediction with FHE](guides/prediction\_with\_fhe.md)
-* [Hybrid models](guides/hybrid-models.md)
+* [Hybrid Models](guides/hybrid-models.md)
 * [Production Deployment](guides/client\_server.md)
 * [Serialization](guides/serialization.md)
 
