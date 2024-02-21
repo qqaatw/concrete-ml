@@ -1,6 +1,6 @@
 # Built-in Model Examples
 
-These examples illustrate the basic usage of built-in Concrete ML models. For more examples showing how to train high-accuracy models on more complex data-sets, see the [Demos and Tutorials](../getting-started/showcase.md) section.
+These examples illustrate the basic usage of built-in Concrete ML models. For more examples showing how to train high-accuracy models on more complex data-sets, see the [Demos and Tutorials](showcase.md) section.
 
 ## FHE constraints
 
@@ -11,7 +11,7 @@ Tree-based models apply non-linear functions that enable comparisons of inputs a
 In the examples below, built-in neural networks can be configured to work with user-specified accumulator sizes, which allow the user to adjust the speed/accuracy trade-off.
 
 {% hint style="info" %}
-It is recommended to use [simulation](../advanced-topics/compilation.md#fhe-simulation) to configure the speed/accuracy trade-off for tree-based models and neural networks, using grid-search or your own heuristics.
+It is recommended to use [simulation](../explanations/compilation.md#fhe-simulation) to configure the speed/accuracy trade-off for tree-based models and neural networks, using grid-search or your own heuristics.
 {% endhint %}
 
 ## List of examples
