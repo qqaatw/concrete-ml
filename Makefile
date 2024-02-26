@@ -54,7 +54,6 @@ setup_env:
 	echo "Finished installing poetry lock."
 
 	echo "Installing $(CONCRETE_PYTHON_VERSION)" && \
-	poetry run python -m pip install -U --pre "$(CONCRETE_PYTHON_VERSION)"
 	"$(MAKE)" fix_omp_issues_for_intel_mac
 	poetry run python -c "import skorch" || true # Details above
 
