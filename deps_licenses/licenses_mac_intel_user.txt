@@ -23,7 +23,7 @@ huggingface-hub, 0.20.3, Apache Software License
 humanfriendly, 10.0, MIT License
 hummingbird-ml, 0.4.8, MIT License
 idna, 3.6, BSD License
-importlib-resources, 6.1.1, Apache Software License
+importlib_resources, 6.1.2, Apache Software License
 iniconfig, 2.0.0, MIT License
 jmespath, 1.0.1, MIT License
 joblib, 1.3.2, BSD License
@@ -69,5 +69,5 @@ typing_extensions, 4.5.0, Python Software Foundation License
 urllib3, 1.26.18, MIT License
 uvicorn, 0.21.1, BSD License
 xgboost, 1.6.2, Apache Software License
-z3-solver, 4.12.5.0, MIT License
+z3-solver, 4.12.6.0, MIT License
 zipp, 3.17.0, MIT License
