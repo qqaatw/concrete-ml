@@ -90,7 +90,7 @@ quantized_numpy_module, compilation_execution_time = measure_execution_time(
     torch_model,
     x,
     configuration=configuration,
-    rounding_threshold_bits=6,
+    rounding_threshold_bits=3,
     p_error=P_ERROR,
 )
 assert isinstance(quantized_numpy_module, QuantizedModule)
