@@ -14,7 +14,7 @@ layout:
 
 # Welcome to Concrete ML
 
-[⭐️ Star the repo on Github](https://github.com/zama-ai/concrete-ml) | 📚 [FHE Resources by Zama](https://github.com/zama-ai/awesome-zama/tree/main)
+[⭐️ Star the repo on Github](https://github.com/zama-ai/concrete-ml) | 📚 [FHE resources by Zama](https://github.com/zama-ai/awesome-zama/tree/main) | 💬 [Community support](https://community.zama.ai/)
 
 <figure><img src=".gitbook/assets/doc header.png" alt=""><figcaption></figcaption></figure>
 
