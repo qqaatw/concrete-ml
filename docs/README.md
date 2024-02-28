@@ -9,16 +9,16 @@ layout:
   outline:
     visible: true
   pagination:
-    visible: false
+    visible: true
 ---
 
-# WELCOME
+# Welcome to Concrete ML
 
-[⭐️ Star the repo on Github](https://github.com/zama-ai/concrete-ml) | 📚 [FHE Resources by Zama](https://github.com/zama-ai/awesome-zama/tree/main)&#x20;
+[⭐️ Star the repo on Github](https://github.com/zama-ai/concrete-ml) | 📚 [FHE Resources by Zama](https://github.com/zama-ai/awesome-zama/tree/main)
 
-<figure><img src=".gitbook/assets/Concrete ML (1).png" alt=""><figcaption></figcaption></figure>
+<figure><img src=".gitbook/assets/doc header.png" alt=""><figcaption></figcaption></figure>
 
-Concrete ML is an open-source, privacy-preserving, machine learning framework based on Fully Homomorphic Encryption (FHE).&#x20;
+Concrete ML is an open-source, privacy-preserving, machine learning framework based on Fully Homomorphic Encryption (FHE).
 
 ### Start here
 
@@ -28,9 +28,9 @@ Learn the basics of Concrete ML, set it up, and make it run with ease.
 
 ### Build with Concrete ML
 
-Start building with Concrete ML by exploring its core features, following step-by-step guides, and diving into user-friendly tutorials.
+Start building with Concrete ML by exploring its core features, following deployment guides, and diving into user-friendly tutorials step by step.
 
-<table data-view="cards"><thead><tr><th align="center"></th><th></th><th></th><th data-hidden data-card-target data-type="content-ref"></th><th data-hidden data-card-cover data-type="files"></th></tr></thead><tbody><tr><td align="center"><strong>Fundamentals</strong></td><td>Explore core features of Concrete ML with detailed explanations and code examples.</td><td><ul><li><a href="broken-reference">Build-in models</a></li><li><a href="broken-reference">Deep learning</a></li></ul></td><td></td><td><a href=".gitbook/assets/Untitled design (7).png">Untitled design (7).png</a></td></tr><tr><td align="center"><strong>Guides</strong></td><td>Discover essential deployment guides to streamline your projects.</td><td><ul><li><a href="guides/prediction_with_fhe.md">Prediction with FHE</a></li><li><a href="guides/hybrid-models.md">Hybrid models</a></li><li><a href="guides/client_server.md">Production deployment</a></li><li><a href="guides/serialization.md">Serialization</a></li></ul></td><td><a href="broken-reference">Broken link</a></td><td><a href=".gitbook/assets/2 (2).png">2 (2).png</a></td></tr><tr><td align="center"><strong>Tutorials</strong></td><td>Follow step-by-step guides to build use case examples with Concrete ML.</td><td><ul><li><a href="tutorials/showcase.md">Demos</a></li><li><a href="./#build-with-concrete-ml">Build-in model exampels</a></li><li><a href="tutorials/examples.md">Deep learning examples</a></li></ul></td><td><a href="broken-reference">Broken link</a></td><td><a href=".gitbook/assets/1 (2).png">1 (2).png</a></td></tr></tbody></table>
+<table data-view="cards"><thead><tr><th align="center"></th><th></th><th></th><th data-hidden data-card-target data-type="content-ref"></th><th data-hidden data-card-cover data-type="files"></th></tr></thead><tbody><tr><td align="center"><strong>Fundamentals</strong></td><td>Explore core features of Concrete ML with and code examples.</td><td><ul><li><a href="broken-reference/">Build-in models</a></li><li><a href="broken-reference/">Deep learning</a></li></ul></td><td></td><td><a href=".gitbook/assets/3.png">3.png</a></td></tr><tr><td align="center"><strong>Guides</strong></td><td>Discover essential deployment guides to streamline your projects.</td><td><ul><li><a href="guides/prediction_with_fhe.md">Prediction with FHE</a></li><li><a href="guides/hybrid-models.md">Hybrid models</a></li><li><a href="guides/client_server.md">Production deployment</a></li><li><a href="guides/serialization.md">Serialization</a></li></ul></td><td><a href="broken-reference/">broken-reference</a></td><td><a href=".gitbook/assets/2.png">2.png</a></td></tr><tr><td align="center"><strong>Tutorials</strong></td><td>Follow step-by-step guides to build use case examples with Concrete ML.</td><td><ul><li><a href="tutorials/showcase.md#start-here">Start here</a></li><li><a href="tutorials/showcase.md#go-further">Go further</a></li></ul></td><td><a href="broken-reference/">broken-reference</a></td><td><a href=".gitbook/assets/1.png">1.png</a></td></tr></tbody></table>
 
 ### References & Explanations
 
@@ -40,18 +40,17 @@ Refer to the API, review product architecture, and access additional resources f
 
 ### Support
 
-Our team of experts usually answers within 24 hours in working days.&#x20;
+Our team of experts usually answers within 24 hours in working days.
 
-<table data-card-size="large" data-view="cards"><thead><tr><th align="center"></th><th align="center"></th><th data-hidden data-card-target data-type="content-ref"></th></tr></thead><tbody><tr><td align="center">💬 <strong>Community Forum</strong> </td><td align="center">Raise your technical problems and find solutions to common issues</td><td><a href="https://community.zama.ai/">https://community.zama.ai/</a></td></tr><tr><td align="center">👾 <strong>Discord Channel</strong></td><td align="center">Discuss FHE-related topics with our research team and the community on live</td><td><a href="https://discord.com/invite/fhe-org">https://discord.com/invite/fhe-org</a></td></tr></tbody></table>
+<table data-card-size="large" data-view="cards"><thead><tr><th align="center"></th><th align="center"></th><th data-hidden data-card-target data-type="content-ref"></th></tr></thead><tbody><tr><td align="center">💬 <strong>Community Forum</strong></td><td align="center">Raise your technical problems and find solutions to common issues</td><td><a href="https://community.zama.ai/">https://community.zama.ai/</a></td></tr><tr><td align="center">👾 <strong>Discord Channel</strong></td><td align="center">Discuss FHE-related topics with our research team and the community on live</td><td><a href="https://discord.com/invite/fhe-org">https://discord.com/invite/fhe-org</a></td></tr></tbody></table>
 
 ### Developers
 
-* [Contribute](developer/workflow/contributing.md) to Concrete ML&#x20;
+* [Contribute to Concrete ML](developer/contributing.md)
 * [Latest release note](https://github.com/zama-ai/concrete-ml/releases)
-* [Feature request](https://github.com/zama-ai/concrete-ml/issues/new?assignees=\&labels=feature\&projects=\&template=feature\_request.md)&#x20;
+* [Feature request](https://github.com/zama-ai/concrete-ml/issues/new?assignees=\&labels=feature\&projects=\&template=feature\_request.md)
 * [Bug report](https://github.com/zama-ai/concrete-ml/issues/new?assignees=\&labels=bug\&projects=\&template=bug\_report.md)
 
 ***
 
-💌  Message from the team:\
-Hi there, we're happy to have you with us to advance the FHE spaces! Would you like to take 1 minute to tell us about your experience with Cocnrete ML? [Click here ->](./#support)
+<figure><picture><source srcset=".gitbook/assets/feedback_banner_dark.png" media="(prefers-color-scheme: dark)"><img src=".gitbook/assets/feedback_banner_light.png" alt=""></picture><figcaption></figcaption></figure>

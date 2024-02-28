@@ -1,4 +1,4 @@
-# Set Up the Project
+# Set up the project
 
 Concrete ML is a `Python` library, so `Python` should be installed to develop Concrete ML. `v3.8` and `v3.9` are the only supported versions. Concrete ML also uses `Poetry` and `Make`.
 
@@ -155,7 +155,7 @@ rm -rf .venv
 make setup_env
 ```
 
-At this point, you should consider using Docker as nobody will have the exact same setup as you. If, however, you need to develop on your OS directly, you can [ask Zama for help](../../getting-started/#support).
+At this point, you should consider using Docker as nobody will have the exact same setup as you. If, however, you need to develop on your OS directly, you can [ask Zama for help](../getting-started/#support).
 
 #### in Docker
 

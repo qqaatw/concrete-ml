@@ -1,57 +1,57 @@
 # Table of contents
 
-* [WELCOME](README.md)
+* [Welcome to Concrete ML](README.md)
 
 ## Getting Started
 
 * [What is Concrete ML?](getting-started/readme.md)
 * [Installation](getting-started/pip\_installing.md)
-* [Key Concepts](getting-started/concepts.md)
-* [Inference in the Cloud](getting-started/cloud.md)
+* [Key concepts](getting-started/concepts.md)
+* [Inference in the cloud](getting-started/cloud.md)
 
-## TUTORIALS
+## Tutorials
 
-* [Demos and Tutorials](tutorials/showcase.md)
-* [Built-in Model Examples](tutorials/ml\_examples.md)
-* [Deep Learning Examples](tutorials/examples.md)
+* [Built-in model examples](tutorials/ml\_examples.md)
+* [Deep learning examples](tutorials/examples.md)
+* [See all tutorials](tutorials/showcase.md)
 
 ## Built-in Models
 
-* [Linear Models](built-in-models/linear.md)
-* [Tree-based Models](built-in-models/tree.md)
-* [Neural Networks](built-in-models/neural-networks.md)
-* [Nearest Neighbors](built-in-models/nearest-neighbors.md)
+* [Linear models](built-in-models/linear.md)
+* [Tree-based models](built-in-models/tree.md)
+* [Neural networks](built-in-models/neural-networks.md)
+* [Nearest neighbors](built-in-models/nearest-neighbors.md)
 * [Pandas](built-in-models/pandas.md)
-* [Encrypted Training](built-in-models/training.md)
+* [Encrypted training](built-in-models/training.md)
 
 ## Deep Learning
 
 * [Using Torch](deep-learning/torch\_support.md)
 * [Using ONNX](deep-learning/onnx\_support.md)
-* [Step-by-step Guide](deep-learning/fhe\_friendly\_models.md)
-* [Debugging Models](deep-learning/fhe\_assistant.md)
-* [Optimizing Inference](deep-learning/optimizing\_inference.md)
+* [Step-by-step guide](deep-learning/fhe\_friendly\_models.md)
+* [Debugging models](deep-learning/fhe\_assistant.md)
+* [Optimizing inference](deep-learning/optimizing\_inference.md)
 
-## GUIDES
+## Guides
 
 * [Prediction with FHE](guides/prediction\_with\_fhe.md)
-* [Hybrid Models](guides/hybrid-models.md)
-* [Production Deployment](guides/client\_server.md)
+* [Hybrid models](guides/hybrid-models.md)
+* [Production deployment](guides/client\_server.md)
 * [Serialization](guides/serialization.md)
 
-## EXPLANATIONS
+## Explanations
 
 * [Quantization](explanations/quantization.md)
 * [Pruning](explanations/pruning.md)
 * [Compilation](explanations/compilation.md)
-* [Advanced Features](explanations/advanced\_features.md)
-* [Project Architecture](explanations/project-architecture/README.md)
+* [Advanced features](explanations/advanced\_features.md)
+* [Project architecture](explanations/project-architecture/README.md)
   * [Importing ONNX](explanations/project-architecture/onnx\_pipeline.md)
-  * [Quantization Tools](explanations/project-architecture/quantization\_internal.md)
-  * [FHE Op-graph Design](explanations/project-architecture/fhe-op-graphs.md)
-  * [External Libraries](explanations/project-architecture/external\_libraries.md)
+  * [Quantization tools](explanations/project-architecture/quantization\_internal.md)
+  * [FHE Op-graph design](explanations/project-architecture/fhe-op-graphs.md)
+  * [External libraries](explanations/project-architecture/external\_libraries.md)
 
-## REFERENCES
+## References
 
 * [API](references/api/README.md)
   * [concrete.ml.common.check\_inputs.md](references/api/concrete.ml.common.check\_inputs.md)
@@ -108,9 +108,8 @@
 
 ## Developer
 
-* [Workflow](developer/workflow/README.md)
-  * [Set Up the Project](developer/workflow/project\_setup.md)
-  * [Set Up Docker](developer/workflow/docker\_setup.md)
-  * [Documentation](developer/workflow/documenting.md)
-  * [Support and Issues](developer/workflow/debug\_support\_submit\_issues.md)
-  * [Contributing](developer/workflow/contributing.md)
+* [Set up the project](developer/project\_setup.md)
+* [Set up docker](developer/docker\_setup.md)
+* [Documentation](developer/documenting.md)
+* [Support and issues](developer/debug\_support\_submit\_issues.md)
+* [Contribute](developer/contributing.md)
