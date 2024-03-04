@@ -42,9 +42,9 @@ Refer to the API, review product architecture, and access additional resources f
 
 Our team of experts usually answers within 24 hours in working days.
 
-<table data-card-size="large" data-view="cards"><thead><tr><th align="center"></th><th align="center"></th><th data-hidden data-card-target data-type="content-ref"></th></tr></thead><tbody><tr><td align="center">💬 <strong>Community Forum</strong></td><td align="center">Raise your technical problems and find solutions to common issues</td><td><a href="https://community.zama.ai/">https://community.zama.ai/</a></td></tr><tr><td align="center">👾 <strong>Discord Channel</strong></td><td align="center">Discuss FHE-related topics with our research team and the community on live</td><td><a href="https://discord.com/invite/fhe-org">https://discord.com/invite/fhe-org</a></td></tr></tbody></table>
+<table data-card-size="large" data-view="cards"><thead><tr><th align="center"></th><th align="center"></th><th data-hidden data-card-target data-type="content-ref"></th></tr></thead><tbody><tr><td align="center">💬 <strong>Community forum</strong></td><td align="center">Raise your technical problems and find solutions to common issues</td><td><a href="https://community.zama.ai/">https://community.zama.ai/</a></td></tr><tr><td align="center">👾 <strong>Discord channel</strong></td><td align="center">Discuss FHE-related topics with our research team and the community on live</td><td><a href="https://discord.com/invite/fhe-org">https://discord.com/invite/fhe-org</a></td></tr></tbody></table>
 
-### Developers
+### Developer
 
 * [Contribute to Concrete ML](developer/contributing.md)
 * [Latest release note](https://github.com/zama-ai/concrete-ml/releases)

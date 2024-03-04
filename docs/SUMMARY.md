@@ -9,12 +9,6 @@
 * [Key concepts](getting-started/concepts.md)
 * [Inference in the cloud](getting-started/cloud.md)
 
-## Tutorials
-
-* [Built-in model examples](tutorials/ml\_examples.md)
-* [Deep learning examples](tutorials/examples.md)
-* [See all tutorials](tutorials/showcase.md)
-
 ## Built-in Models
 
 * [Linear models](built-in-models/linear.md)
@@ -38,6 +32,12 @@
 * [Hybrid models](guides/hybrid-models.md)
 * [Production deployment](guides/client\_server.md)
 * [Serialization](guides/serialization.md)
+
+## Tutorials
+
+* [Built-in model examples](tutorials/ml\_examples.md)
+* [Deep learning examples](tutorials/examples.md)
+* [See all tutorials](tutorials/showcase.md)
 
 ## Explanations
 
