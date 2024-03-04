@@ -10,6 +10,7 @@ from tqdm import tqdm
 from trainer import accuracy, get_test_set, get_train_set
 
 from concrete.ml.torch.compile import compile_brevitas_qat_model
+from concrete.ml.common.preprocessors import TLUOptimizer, AssignBitWidths
 
 CURRENT_DIR = Path(__file__).resolve().parent
 
@@ -103,12 +104,25 @@ def main(args):
     model.eval()
 
     # Multi-parameter strategy is used in order to speed-up the FHE executions
-    cfg = Configuration(
-        verbose=True,
-        show_optimizer=args.show_optimizer,
-    )
+    default_cfg = Configuration()
 
     for rounding_threshold_bits in rounding_threshold_bits_list:
+        cfg = Configuration(
+            verbose=True,
+            show_optimizer=args.show_optimizer,
+            additional_processors=[
+                TLUOptimizer(rounding_threshold=rounding_threshold_bits, verbose=True, n_bits_range_search=4),
+                AssignBitWidths(
+                    single_precision=default_cfg.single_precision,
+                    composable=default_cfg.composable,
+                    comparison_strategy_preference=default_cfg.comparison_strategy_preference,
+                    bitwise_strategy_preference=default_cfg.bitwise_strategy_preference,
+                    shifts_with_promotion=default_cfg.shifts_with_promotion,
+                    multivariate_strategy_preference=default_cfg.multivariate_strategy_preference,
+                    min_max_strategy_preference=default_cfg.min_max_strategy_preference,
+                ),
+            ]
+        )
         print(f"Testing network with {rounding_threshold_bits} rounding bits")
 
         # Compile the quantized model
@@ -118,7 +132,6 @@ def main(args):
             input_set,
             n_bits={"model_inputs": 8, "model_outputs": 8},
             configuration=cfg,
-            rounding_threshold_bits=rounding_threshold_bits,
         )
 
         # Print max bit-width in the circuit
@@ -137,7 +150,7 @@ if __name__ == "__main__":
         "--rounding_threshold_bits",
         nargs="+",
         type=int,
-        default=[None],
+        default=[3],
         help="Number of bits to target with rounding.",
     )
     parser.add_argument(

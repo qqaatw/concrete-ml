@@ -4,6 +4,8 @@ import time
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
+from concrete.fhe import Exactness
+from concrete.fhe.mlir.processors import ProcessRounding
 
 import torch
 from concrete.fhe.compilation.configuration import Configuration
@@ -13,6 +15,7 @@ from trainer import get_test_set
 
 from concrete.ml.quantization import QuantizedModule
 from concrete.ml.torch.compile import compile_brevitas_qat_model
+from concrete.ml.common.preprocessors import InsertRounding, TLUOptimizer, AssignBitWidths
 
 CURRENT_DIR = Path(__file__).resolve().parent
 KEYGEN_CACHE_DIR = CURRENT_DIR.joinpath(".keycache")
@@ -60,7 +63,9 @@ torch_model.eval()
 
 # Load the saved parameters using the available checkpoint
 checkpoint = torch.load(
-    CURRENT_DIR.joinpath("experiments/CNV_2W2A_2W2A_20221114_131345/checkpoints/best.tar"),
+    CURRENT_DIR.joinpath(
+        "experiments/CNV_2W2A_2W2A_20221114_131345/checkpoints/best.tar"
+    ),
     map_location=DEVICE,
 )
 torch_model.load_state_dict(checkpoint["state_dict"], strict=False)
@@ -76,11 +81,26 @@ x, labels = next(iter(test_loader))
 # cache generated keys through `insecure_key_cache_location`. As the name suggests, these
 # parameters are unsafe and should only be used for debugging in development
 # Multi-parameter strategy is used in order to speed-up the FHE executions
+base_configuration = Configuration()
 configuration = Configuration(
     dump_artifacts_on_unexpected_failures=False,
     enable_unsafe_features=True,
     use_insecure_key_cache=True,
     insecure_key_cache_location=KEYGEN_CACHE_DIR,
+    additional_processors=[
+        TLUOptimizer(rounding_threshold=4, verbose=True, n_bits_range_search=4),
+        AssignBitWidths(
+            single_precision=base_configuration.single_precision,
+            composable=base_configuration.composable,
+            comparison_strategy_preference=base_configuration.comparison_strategy_preference,
+            bitwise_strategy_preference=base_configuration.bitwise_strategy_preference,
+            shifts_with_promotion=base_configuration.shifts_with_promotion,
+            multivariate_strategy_preference=base_configuration.multivariate_strategy_preference,
+            min_max_strategy_preference=base_configuration.min_max_strategy_preference,
+        ),
+        ProcessRounding(rounding_exactness=Exactness.APPROXIMATE)
+    ],
+    # additional_processors=[InsertRounding(4)]
 )
 
 print("Compiling the model.")
@@ -90,7 +110,6 @@ quantized_numpy_module, compilation_execution_time = measure_execution_time(
     torch_model,
     x,
     configuration=configuration,
-    rounding_threshold_bits=3,
     p_error=P_ERROR,
 )
 assert isinstance(quantized_numpy_module, QuantizedModule)
@@ -108,11 +127,17 @@ print("Saving graph and mlir to disk.")
 open("cifar10.graph", "w").write(str(quantized_numpy_module.fhe_circuit))
 open("cifar10.mlir", "w").write(quantized_numpy_module.fhe_circuit.mlir)
 
+import sys
+
+if sys.platform == "darwin":
+    print("skipping fhe evaluation on darwin platform")
+    sys.exit(0)
+
 # Key generation
 print("Creation of the private and evaluation keys.")
-_, keygen_execution_time = measure_execution_time(quantized_numpy_module.fhe_circuit.keygen)(
-    force=True
-)
+_, keygen_execution_time = measure_execution_time(
+    quantized_numpy_module.fhe_circuit.keygen
+)(force=True)
 print(f"Keygen took {keygen_execution_time} seconds")
 
 # Data torch to numpy
@@ -134,7 +159,9 @@ for image_index in range(NUM_SAMPLES):
         quantized_numpy_module.quantize_input
     )(test_x_numpy)
 
-    print(f"Quantization of a single input (image) took {quantization_execution_time} seconds")
+    print(
+        f"Quantization of a single input (image) took {quantization_execution_time} seconds"
+    )
     print(f"Size of CLEAR input is {q_x_numpy.nbytes} bytes\n")
 
     # Use new VL with .simulate() once CP's multi-parameter/precision bug is fixed
@@ -148,23 +175,31 @@ for image_index in range(NUM_SAMPLES):
     encrypted_q_x_numpy, encryption_execution_time = measure_execution_time(
         quantized_numpy_module.fhe_circuit.encrypt
     )(q_x_numpy)
-    print(f"Encryption of a single input (image) took {encryption_execution_time} seconds\n")
+    print(
+        f"Encryption of a single input (image) took {encryption_execution_time} seconds\n"
+    )
 
-    print(f"Size of ENCRYPTED input is {quantized_numpy_module.fhe_circuit.size_of_inputs} bytes")
-    print(f"Size of ENCRYPTED output is {quantized_numpy_module.fhe_circuit.size_of_outputs} bytes")
+    print(
+        f"Size of ENCRYPTED input is {quantized_numpy_module.fhe_circuit.size_of_inputs} bytes"
+    )
+    print(
+        f"Size of ENCRYPTED output is {quantized_numpy_module.fhe_circuit.size_of_outputs} bytes"
+    )
     print(
         f"Size of keyswitch key is {quantized_numpy_module.fhe_circuit.size_of_keyswitch_keys} bytes"
     )
     print(
         f"Size of bootstrap key is {quantized_numpy_module.fhe_circuit.size_of_bootstrap_keys} bytes"
     )
-    print(f"Size of secret key is {quantized_numpy_module.fhe_circuit.size_of_secret_keys} bytes")
+    print(
+        f"Size of secret key is {quantized_numpy_module.fhe_circuit.size_of_secret_keys} bytes"
+    )
     print(f"Complexity is {quantized_numpy_module.fhe_circuit.complexity}\n")
 
     print("Running FHE inference")
-    fhe_output, fhe_execution_time = measure_execution_time(quantized_numpy_module.fhe_circuit.run)(
-        encrypted_q_x_numpy
-    )
+    fhe_output, fhe_execution_time = measure_execution_time(
+        quantized_numpy_module.fhe_circuit.run
+    )(encrypted_q_x_numpy)
     print(f"FHE inference over a single image took {fhe_execution_time}")
 
     # Decrypt print the result
