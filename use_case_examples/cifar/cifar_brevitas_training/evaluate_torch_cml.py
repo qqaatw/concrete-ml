@@ -9,8 +9,8 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from trainer import accuracy, get_test_set, get_train_set
 
+from concrete.ml.common.preprocessors import AssignBitWidths, TLUOptimizer
 from concrete.ml.torch.compile import compile_brevitas_qat_model
-from concrete.ml.common.preprocessors import TLUOptimizer, AssignBitWidths
 
 CURRENT_DIR = Path(__file__).resolve().parent
 
@@ -111,7 +111,9 @@ def main(args):
             verbose=True,
             show_optimizer=args.show_optimizer,
             additional_processors=[
-                TLUOptimizer(rounding_threshold=rounding_threshold_bits, verbose=True, n_bits_range_search=4),
+                TLUOptimizer(
+                    rounding_threshold=rounding_threshold_bits, verbose=True, n_bits_range_search=3
+                ),
                 AssignBitWidths(
                     single_precision=default_cfg.single_precision,
                     composable=default_cfg.composable,
@@ -121,7 +123,7 @@ def main(args):
                     multivariate_strategy_preference=default_cfg.multivariate_strategy_preference,
                     min_max_strategy_preference=default_cfg.min_max_strategy_preference,
                 ),
-            ]
+            ],
         )
         print(f"Testing network with {rounding_threshold_bits} rounding bits")
 
@@ -133,6 +135,13 @@ def main(args):
             n_bits={"model_inputs": 8, "model_outputs": 8},
             configuration=cfg,
         )
+
+        print("Saving graph and mlir to disk.")
+        assert quantized_numpy_module.fhe_circuit is not None
+        with open("cifar10.graph", "w") as file:
+            file.write(quantized_numpy_module.fhe_circuit.graph.format())
+        with open("cifar10.mlir", "w") as file:
+            file.write(quantized_numpy_module.fhe_circuit.mlir)
 
         # Print max bit-width in the circuit
         print(
