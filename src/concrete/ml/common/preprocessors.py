@@ -94,7 +94,7 @@ class InsertRounding(GraphProcessor):
             )
             rounding_node.properties["final_lsbs_to_remove"] = lsbs_to_remove
             rounding_node.properties["resulting_bit_width"] = self.rounding_threshold
-            # rounding_node.properties["overflow_protection"] = False
+            rounding_node.properties["overflow_protection"] = False
             rounding_node.properties["overflow_detected"] = False
             rounding_node.properties["exactness"] = self.exactness
 
@@ -482,6 +482,7 @@ class TLUOptimizer(GraphProcessor):
             rounding_node.properties["final_lsbs_to_remove"] = lsbs_to_remove
             rounding_node.properties["resulting_bit_width"] = self.rounding_threshold
             rounding_node.properties["overflow_detected"] = False
+            rounding_node.properties["overflow_protection"] = False
             rounding_node.properties["exactness"] = self.exactness
             rounding_node.properties["original_input_bit_width"] = (
                 mul_node.output.dtype.bit_width
