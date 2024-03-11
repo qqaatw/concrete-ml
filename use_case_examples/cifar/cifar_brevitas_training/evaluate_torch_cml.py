@@ -9,7 +9,8 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from trainer import accuracy, get_test_set, get_train_set
 
-from concrete.ml.common.preprocessors import AssignBitWidths, TLUOptimizer
+from concrete.ml.common.preprocessors import TLUOptimizer, Exactness
+from concrete.fhe.mlir.processors import AssignBitWidths
 from concrete.ml.torch.compile import compile_brevitas_qat_model
 
 CURRENT_DIR = Path(__file__).resolve().parent
@@ -103,27 +104,14 @@ def main(args):
     # Eval mode
     model.eval()
 
-    # Multi-parameter strategy is used in order to speed-up the FHE executions
-    default_cfg = Configuration()
-
     for rounding_threshold_bits in rounding_threshold_bits_list:
+        tlu_optimizer = TLUOptimizer(
+            rounding_threshold=rounding_threshold_bits, verbose=True, n_bits_range_search=5, exactness=Exactness.APPROXIMATE,
+        )
         cfg = Configuration(
             verbose=True,
             show_optimizer=args.show_optimizer,
-            additional_processors=[
-                TLUOptimizer(
-                    rounding_threshold=rounding_threshold_bits, verbose=True, n_bits_range_search=3
-                ),
-                AssignBitWidths(
-                    single_precision=default_cfg.single_precision,
-                    composable=default_cfg.composable,
-                    comparison_strategy_preference=default_cfg.comparison_strategy_preference,
-                    bitwise_strategy_preference=default_cfg.bitwise_strategy_preference,
-                    shifts_with_promotion=default_cfg.shifts_with_promotion,
-                    multivariate_strategy_preference=default_cfg.multivariate_strategy_preference,
-                    min_max_strategy_preference=default_cfg.min_max_strategy_preference,
-                ),
-            ],
+            additional_pre_processors=[tlu_optimizer]
         )
         print(f"Testing network with {rounding_threshold_bits} rounding bits")
 
