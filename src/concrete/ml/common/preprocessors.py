@@ -230,6 +230,8 @@ class TLUOptimizer(GraphProcessor):
         else:
             all_nodes_results, all_node_inputs = None, None
 
+        del all_nodes_results
+
         tlu_nodes = graph.query_nodes(
             custom_filter=is_node_tlu,
         )
@@ -741,6 +743,7 @@ class TLUOptimizer(GraphProcessor):
 
             # TODO: DEBUGGING SANITY CHECK WHERE WE VALIDATE THAT THE BEST MSE IS INDEED ACHIEVED
             # WITH BEST_A and BEST_B using the subgraph to do the computation
+            print("Doing sanity check")
             x = (subgraph_inputs + best_b) * best_a
             if lsbs_to_remove > 0:
                 x = round_bit_pattern(
@@ -754,6 +757,7 @@ class TLUOptimizer(GraphProcessor):
             mse = ((reference - tlu_ouput) ** 2).mean(axis=reduce_axes, keepdims=True)
 
             if True:
+                print("plotting")
                 import matplotlib.pyplot as plt
 
                 select_slices = tuple(
