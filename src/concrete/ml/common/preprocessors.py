@@ -38,6 +38,34 @@ def is_node_tlu(node):
     return node.converted_to_table_lookup
 
 
+class CycleDetector(GraphProcessor):
+    """
+    CycleDetector graph processor, to detect cycles.
+    """
+
+    def __init__(
+        self,
+    ):
+        pass
+
+    def apply(self, graph: Graph):
+        # Get all nodes that will be converted to LUTs
+        tlu_nodes = graph.query_nodes(
+            custom_filter=is_node_tlu,
+        )
+        cycles = nx.recursive_simple_cycles(graph.graph)
+        if cycles:
+            raise Exception()
+
+        for tlu_node in tlu_nodes:
+            if "subgraph" in tlu_node.evaluator.properties["kwargs"]:
+                tlu_subgraph: Graph = tlu_node.evaluator.properties["kwargs"]["subgraph"]
+                cycles = nx.recursive_simple_cycles(tlu_subgraph.graph)
+                if cycles:
+                    raise Exception()
+
+
+
 class InsertRounding(GraphProcessor):
     """
     InsertRounding graph processor, to add rounding before TLUs if desired.
@@ -208,6 +236,7 @@ class TLUOptimizer(GraphProcessor):
         exactness: Exactness = Exactness.EXACT,
         dataset: Optional[List[np.ndarray]] = None,
         overflow_protection: bool = True,
+        rounding_function=round_bit_pattern,
     ):
         self.rounding_threshold = rounding_threshold
         self.verbose = verbose
@@ -215,6 +244,7 @@ class TLUOptimizer(GraphProcessor):
         self.exactness = exactness
         self.dataset = [dataset] if isinstance(dataset, np.ndarray) else dataset
         self.overflow_protection = overflow_protection
+        self.rounding_function = rounding_function
         if self.n_bits_range_search > 3:
             self.dump_all_figures = False
 
@@ -519,7 +549,7 @@ class TLUOptimizer(GraphProcessor):
                     # print(f"{x_delta_min=}, {x_delta_max=}")
 
                     mult_first = False
-                    rounding_function = round_bit_pattern
+                    rounding_function = self.rounding_function
 
                     # Find the proper n
                     n = 20
@@ -942,14 +972,23 @@ class TLUOptimizer(GraphProcessor):
 
                 # assert (mse == best_mse).all()  # breaks for now  # breaks for now
                 # print("MAX-ABS ERROR: ", np.abs(mse - best_mse).max())
+                cycles = nx.recursive_simple_cycles(tlu_subgraph)
+                if cycles:
+                    raise ValueError()
 
             print("done with node")
         print(f"{self.exactness=}")
 
-        for destination in ["debug.png", "debug.dot", "debug.svg"]:
-            graph.draw(save_to=destination)
+        # for destination in ["debug.png", "debug.dot", "debug.svg"]:
+        #     graph.draw(save_to=destination)
 
         with open("debug.graph", "w", encoding="utf-8") as file:
             file.write(graph.format(show_assigned_bit_widths=True))
+
+        cycles = nx.recursive_simple_cycles(graph.graph)
+        if cycles:
+            raise ValueError()
         if self.verbose:
             print("TLU optimization done.")
+            print("Resulting graph:")
+            print(graph.format())
