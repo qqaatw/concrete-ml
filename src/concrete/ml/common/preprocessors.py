@@ -2,6 +2,7 @@
 Declaration of `TLUOptimizer` graph processor.
 """
 
+import warnings
 from copy import deepcopy
 from itertools import product
 from typing import Dict, List, Optional, Union
@@ -417,6 +418,9 @@ class TLUOptimizer(GraphProcessor):
 
             optimization = "exact"
             if optimization == "full_scale":
+                # DEPRECATED
+                warnings.warn("DEPRECATED")
+
                 # Map [min-bound, max-bound] -> [-2**n, 2**n] with linear scaling
 
                 # Calibrate
@@ -544,35 +548,37 @@ class TLUOptimizer(GraphProcessor):
                     # print("DEBUG: ", np.log2(((x_delta_max - x_delta_min) / delta)+1))
 
                     middle = (x_delta_max - x_delta_min) / 2
-                    middle = np.median(np.arange(x_delta_min, x_delta_max + 1, delta))
+                    middle = np.median(np.arange(x_delta_min, x_delta_max+1, delta))
                     # print(f"{x_delta_min-middle=}, {x_delta_max-middle=}")
                     # print(f"{x_delta_min=}, {x_delta_max=}")
 
-                    mult_first = False
                     rounding_function = self.rounding_function
+                    # TODO: figure out how to lower this
+                    n = 24  # Some high value
 
                     # Find the proper n
-                    n = 20
-                    if mult_first:
-                        a_prime = ((2**n) - delta) / (x_delta_max - x_delta_min)
+                    # if mult_first:
+                    #     a_prime = ((2**n) - delta) / (x_delta_max - x_delta_min)
+                    #
+                    #     b_prime = -(2 ** (n - 1)) - (
+                    #         x_delta_min * ((2**n - 1) / (x_delta_max - x_delta_min))
+                    #     )
+                    #     a_prime = np.floor(a_prime).astype(np.int64)
+                    #     b_prime = np.floor(b_prime).astype(np.int64)
+                    # else:
 
-                        b_prime = -(2 ** (n - 1)) - (
-                            x_delta_min * ((2**n - 1) / (x_delta_max - x_delta_min))
-                        )
-                        a_prime = np.floor(a_prime).astype(np.int64)
-                        b_prime = np.floor(b_prime).astype(np.int64)
+                    a_prime = (2**n - 1) / (x_delta_max - x_delta_min)
+                    a_prime = np.floor(a_prime).astype(np.int64)
+                    b_prime = middle
+                    if rounding_function == round_bit_pattern:
+                        b_prime += delta / 2
                     else:
-                        a_prime = (2**n - 1) / (x_delta_max - x_delta_min)
-                        a_prime = np.floor(a_prime).astype(np.int64)
-                        b_prime = middle
-                        if rounding_function == round_bit_pattern:
-                            b_prime += delta / 2
-                        else:
-                            b_prime += 0
-                        # print(f"{a_prime=}, {b_prime=}")
+                        b_prime += 0
+                    # print(f"{a_prime=}, {b_prime=}")
 
-                        a_prime = np.floor(a_prime).astype(np.int64)
-                        b_prime = np.floor(b_prime).astype(np.int64)
+                    a_prime = np.rint(a_prime).astype(np.int64)
+                    # TODO: debug where to check when we should add a +1 or not
+                    b_prime = np.rint(b_prime).astype(np.int64) + 1
 
                     # print(f"{a_prime=}, {b_prime=}")
                     best_indexes = tuple([0, *indexes])
@@ -597,6 +603,8 @@ class TLUOptimizer(GraphProcessor):
                         plt.close(fig)
 
             elif optimization == "exhaustive_search":
+                # DEPRECATED
+                warnings.warn("DEPRECATED")
                 # Exhaustive search on a and b with for-loop
                 # Reshape a and b to the size of the input
                 assert isinstance(variable_input_node.output, ValueDescription)
@@ -717,7 +725,7 @@ class TLUOptimizer(GraphProcessor):
             )
             print(f"DEBUG: {best_a.shape=}, {best_b.shape=}")
             print(
-                f"DEBUG: {np.ceil(np.log2(np.abs(best_a).max()))=}, {np.ceil(np.log2(np.abs(best_b).max()))+1=}, "
+                f"DEBUG: {np.ceil(np.log2(np.abs(best_a).max()))=}, {np.ceil(np.log2(max(np.abs(best_b).max(), 1)))=}, "
             )
 
             # ------------------------------------------
