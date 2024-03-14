@@ -106,7 +106,9 @@ def main(args):
 
     for rounding_threshold_bits in rounding_threshold_bits_list:
         tlu_optimizer = TLUOptimizer(
-            rounding_threshold=rounding_threshold_bits, verbose=True, n_bits_range_search=5, exactness=Exactness.APPROXIMATE,
+            rounding_threshold=rounding_threshold_bits, 
+            verbose=True, n_bits_range_search=5, 
+            exactness=Exactness.APPROXIMATE,
         )
         cfg = Configuration(
             verbose=True,
