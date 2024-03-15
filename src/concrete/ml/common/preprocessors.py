@@ -393,6 +393,8 @@ class TLUOptimizer(GraphProcessor):
             reference = vectorized_graph_eval(
                 tlu_subgraph, subgraph_inputs, sorted_nodes=sorted_nodes
             )
+            assert isinstance(reference, np.ndarray)
+            reference = reference.astype(np.int64)
 
             # Compute with rounding but without calibration
             accumulator_bit_width = Integer.that_can_represent(
@@ -410,6 +412,8 @@ class TLUOptimizer(GraphProcessor):
                 x,
                 sorted_nodes=sorted_nodes,
             )
+            assert isinstance(approximated_no_calib, np.ndarray)
+            approximated_no_calib = approximated_no_calib.astype(np.int64)
             assert isinstance(reference, np.ndarray)
             assert isinstance(approximated_no_calib, np.ndarray)
             mse_no_calib = ((reference - approximated_no_calib) ** 2).mean(
@@ -417,62 +421,21 @@ class TLUOptimizer(GraphProcessor):
             )
 
             optimization = "exact"
-            if optimization == "full_scale":
-                # DEPRECATED
-                warnings.warn("DEPRECATED")
-
-                # Map [min-bound, max-bound] -> [-2**n, 2**n] with linear scaling
-
-                # Calibrate
-                target_bit_width = 20
-                range_size = max_bound - min_bound
-                b_prime = np.floor(min_bound + range_size / 2)
-                a_prime = np.floor(
-                    2 ** (target_bit_width - 1)
-                    / (max((min_bound - b_prime), (max_bound - b_prime)) / 2)
-                )
-                best_a = (
-                    np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64) + a_prime
-                ).astype(np.int64)
-                best_b = (
-                    np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64) - b_prime
-                ).astype(np.int64)
-
-                # Compute mse with calibration
-                x = (subgraph_inputs + best_b) * best_a
-                accumulator_bit_width = Integer.that_can_represent(
-                    [x.min(), x.max()]
-                ).bit_width
-                lsbs_to_remove = accumulator_bit_width - self.rounding_threshold
-                if lsbs_to_remove > 0:
-                    x = round_bit_pattern(x, lsbs_to_remove=lsbs_to_remove)
-                assert isinstance(x, np.ndarray)
-                x = (x.astype(np.float64) / best_a.astype(np.float64)) - best_b.astype(
-                    np.float64
-                )
-                approximated_calib = vectorized_graph_eval(
-                    tlu_subgraph,
-                    x,
-                    sorted_nodes=sorted_nodes,
-                )
-                mse_calib = ((reference - approximated_calib) ** 2).mean(
-                    axis=reduce_axes, keepdims=True
-                )
-                print(f"{mse_calib.max()=} {mse_no_calib.max()=}")
-                best_mse = mse_calib
-
-            elif optimization == "exact":
+            if optimization == "exact":
                 # Match the GCD of the steps k*2**n
 
                 # Initialize a and b such that no changes are done
                 best_a = (
                     np.ones((1,) + subgraph_inputs.shape[1:], dtype=np.int64)
                 ).astype(np.int64)
+
                 best_b = (
                     np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64)
                 ).astype(np.int64)
+
                 assert isinstance(reference, np.ndarray)
                 n_elems = reference.shape[0]
+
                 x_min, x_max = (
                     min_bound,
                     max_bound,
@@ -515,6 +478,7 @@ class TLUOptimizer(GraphProcessor):
                     # Get the common delta between all steps
                     delta = np.gcd.reduce(delta_axis, dtype=np.int64)
                     deltas[indexes] = delta
+
                     rounding_threshold = np.ceil(np.log2((x_max - x_min) / delta)).astype(np.int64)
                     rounding_thresholds[indexes] = rounding_threshold
 
@@ -534,10 +498,15 @@ class TLUOptimizer(GraphProcessor):
                     # Number of elements in the new range for the given step size
                     n_parts = (x_delta_max - x_delta_min) / delta
                     n_round = np.ceil(np.log2(n_parts)).astype(np.int64)
-                    assert n_round <= rounding_threshold, f"{n_round=} > {rounding_threshold=}"
+
+                    # TODO: FIX THIS
+                    if n_round > rounding_threshold:
+                        warnings.warn(f"{n_round=} > {rounding_threshold=}")
                     # print(f"{n_parts=}, {n_round=} {rounding_threshold=}")
 
+                    # TODO: DEBUG: make sure there isn't a -1 around here
                     exceed = ((2**n_round)) - n_parts
+
                     left_bound_add = np.ceil(exceed / 2).astype(np.int64)
                     right_bound_add = np.floor(exceed / 2).astype(np.int64)
                     assert left_bound_add + right_bound_add == exceed
@@ -545,44 +514,61 @@ class TLUOptimizer(GraphProcessor):
 
                     x_delta_min -= left_bound_add * delta
                     x_delta_max += right_bound_add * delta
-                    # print("DEBUG: ", np.log2(((x_delta_max - x_delta_min) / delta)+1))
 
-                    middle = (x_delta_max - x_delta_min) / 2
-                    middle = np.median(np.arange(x_delta_min, x_delta_max+1, delta))
-                    # print(f"{x_delta_min-middle=}, {x_delta_max-middle=}")
-                    # print(f"{x_delta_min=}, {x_delta_max=}")
+                    debug_value = (x_delta_max - x_delta_min)/delta
+                    n_bits_before = np.log2(debug_value)
+                    n_bits_after = 23
+                    # assert n_bits % 1 == 0
+
+                    b_prime = (-2**(n_bits_before-1)) - x_delta_min
+                    a_prime = (2**(n_bits_after)) / (delta*((2**n_bits_before - 1)))
+                    # a_prime = 1
+
+                    # if a_prime % 1 != 0:
+                    #     print(f"{a_prime=}")
+                    #     breakpoint()
+                    # if a_prime < 1:
+                    #     print(f"{a_prime=}")
+                    #     breakpoint()
 
                     rounding_function = self.rounding_function
-                    # TODO: figure out how to lower this
-                    n = 24  # Some high value
+                    if False:
+                        # print("DEBUG: ", np.log2(((x_delta_max - x_delta_min) / delta)+1))
 
-                    # Find the proper n
-                    # if mult_first:
-                    #     a_prime = ((2**n) - delta) / (x_delta_max - x_delta_min)
-                    #
-                    #     b_prime = -(2 ** (n - 1)) - (
-                    #         x_delta_min * ((2**n - 1) / (x_delta_max - x_delta_min))
-                    #     )
-                    #     a_prime = np.floor(a_prime).astype(np.int64)
-                    #     b_prime = np.floor(b_prime).astype(np.int64)
-                    # else:
+                        middle = (x_delta_max - x_delta_min) / 2
+                        middle = np.median(np.arange(x_delta_min, x_delta_max+1, delta))
+                        # print(f"{x_delta_min-middle=}, {x_delta_max-middle=}")
+                        # print(f"{x_delta_min=}, {x_delta_max=}")
 
-                    a_prime = (2**n - 1) / (x_delta_max - x_delta_min)
-                    a_prime = np.floor(a_prime).astype(np.int64)
-                    b_prime = middle
-                    if rounding_function == round_bit_pattern:
-                        b_prime += delta / 2
-                    else:
-                        b_prime += 0
-                    # print(f"{a_prime=}, {b_prime=}")
+                        rounding_function = self.rounding_function
+                        # TODO: figure out how to lower this
+                        n = 23  # Some high value
 
-                    a_prime = np.rint(a_prime).astype(np.int64)
-                    # TODO: debug where to check when we should add a +1 or not
-                    b_prime = np.rint(b_prime).astype(np.int64) + 1
+                        # Find the proper n
+                        # if mult_first:
+                        #     a_prime = ((2**n) - delta) / (x_delta_max - x_delta_min)
+                        #
+                        #     b_prime = -(2 ** (n - 1)) - (
+                        #         x_delta_min * ((2**n - 1) / (x_delta_max - x_delta_min))
+                        #     )
+                        #     a_prime = np.floor(a_prime).astype(np.int64)
+                        #     b_prime = np.floor(b_prime).astype(np.int64)
+                        # else:
 
-                    # print(f"{a_prime=}, {b_prime=}")
+                        a_prime = (2**n - 1) / (x_delta_max - x_delta_min)
+                        a_prime = np.floor(a_prime).astype(np.int64)
+                        b_prime = middle
+                        if rounding_function == round_bit_pattern:
+                            b_prime += delta / 2
+                        else:
+                            b_prime += 0
+                        # print(f"{a_prime=}, {b_prime=}")
+
+                        a_prime = np.rint(a_prime).astype(np.int64)
+                        # TODO: debug where to check when we should add a +1 or not
+                        b_prime = np.rint(b_prime).astype(np.int64) + 1
+
                     best_indexes = tuple([0, *indexes])
-
                     best_a[best_indexes] = a_prime
                     best_b[best_indexes] = b_prime
 
@@ -601,6 +587,52 @@ class TLUOptimizer(GraphProcessor):
                             f"./{tlu_index}_{'_'.join(str(elt) for elt in indexes)}.png"
                         )
                         plt.close(fig)
+
+            elif optimization == "full_scale":
+                # DEPRECATED
+                warnings.warn("DEPRECATED")
+
+                # Map [min-bound, max-bound] -> [-2**n, 2**n] with linear scaling
+
+                # Calibrate
+                target_bit_width = 20
+                range_size = max_bound - min_bound
+                b_prime = np.floor(min_bound + range_size / 2)
+                a_prime = np.floor(
+                    2 ** (target_bit_width - 1)
+                    / (max((min_bound - b_prime), (max_bound - b_prime)) / 2)
+                )
+                best_a = (
+                    np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64) + a_prime
+                ).astype(np.int64)
+                best_b = (
+                    np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64) - b_prime
+                ).astype(np.int64)
+
+                # Compute mse with calibration
+                x = (subgraph_inputs + best_b) * best_a
+                accumulator_bit_width = Integer.that_can_represent(
+                    [x.min(), x.max()]
+                ).bit_width
+                lsbs_to_remove = accumulator_bit_width - self.rounding_threshold
+                if lsbs_to_remove > 0:
+                    x = round_bit_pattern(x, lsbs_to_remove=lsbs_to_remove)
+                assert isinstance(x, np.ndarray)
+                x = (x.astype(np.float64) / best_a.astype(np.float64)) - best_b.astype(
+                    np.float64
+                )
+                approximated_calib = vectorized_graph_eval(
+                    tlu_subgraph,
+                    x,
+                    sorted_nodes=sorted_nodes,
+                )
+                assert isinstance(approximated_calib, np.ndarray)
+                approximated_calib = approximated_calib.astype(np.int64)
+                mse_calib = ((reference - approximated_calib) ** 2).mean(
+                    axis=reduce_axes, keepdims=True
+                )
+                print(f"{mse_calib.max()=} {mse_no_calib.max()=}")
+                best_mse = mse_calib
 
             elif optimization == "exhaustive_search":
                 # DEPRECATED
@@ -713,6 +745,8 @@ class TLUOptimizer(GraphProcessor):
                     # for selection, for example if exactness is EXACT
                     if (best_mse == 0.0).all():
                         break
+            else:
+                raise ValueError()
 
             # We need to make sure that we have the correct shape when adding constants in the graph
             # As Concrete Python doesn't handle broadcasting at the graph level
@@ -724,6 +758,7 @@ class TLUOptimizer(GraphProcessor):
                 best_b, shape=(1,) + variable_input_node.output.shape[1:]
             )
             print(f"DEBUG: {best_a.shape=}, {best_b.shape=}")
+            assert (best_a >= 1.).all()
             print(
                 f"DEBUG: {np.ceil(np.log2(np.abs(best_a).max()))=}, {np.ceil(np.log2(max(np.abs(best_b).max(), 1)))=}, "
             )
