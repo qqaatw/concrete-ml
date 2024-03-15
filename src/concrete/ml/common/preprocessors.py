@@ -60,11 +60,12 @@ class CycleDetector(GraphProcessor):
 
         for tlu_node in tlu_nodes:
             if "subgraph" in tlu_node.evaluator.properties["kwargs"]:
-                tlu_subgraph: Graph = tlu_node.evaluator.properties["kwargs"]["subgraph"]
+                tlu_subgraph: Graph = tlu_node.evaluator.properties["kwargs"][
+                    "subgraph"
+                ]
                 cycles = nx.recursive_simple_cycles(tlu_subgraph.graph)
                 if cycles:
                     raise Exception()
-
 
 
 class InsertRounding(GraphProcessor):
@@ -248,6 +249,7 @@ class TLUOptimizer(GraphProcessor):
         self.rounding_function = rounding_function
         if self.n_bits_range_search > 3:
             self.dump_all_figures = False
+        self._rounding_bits: Dict[int, Dict[str, int]] = {}
 
     def apply(self, graph: Graph):
         if self.rounding_threshold is None:
@@ -305,6 +307,15 @@ class TLUOptimizer(GraphProcessor):
             # Extract TLU input bounds
             if variable_input_node.bounds is not None:
                 min_bound, max_bound = variable_input_node.bounds
+                # For some reason sometimes the bounds booleans
+                if isinstance(min_bound, bool):
+                    min_bound = int(min_bound)
+                if isinstance(max_bound, bool):
+                    max_bound = int(max_bound)
+                if isinstance(min_bound, np.bool_):
+                    min_bound = min_bound.astype(np.int64)
+                if isinstance(max_bound, np.bool_):
+                    max_bound = max_bound.astype(np.int64)
                 assert isinstance(min_bound, int) or (
                     isinstance(min_bound, np.ScalarType) and min_bound.dtype == np.int64
                 ), f"{type(min_bound)=}"
@@ -315,22 +326,10 @@ class TLUOptimizer(GraphProcessor):
                 raise ValueError("Bounds not found")
 
             # Create input with proper shape on the bounds for optimization
-            # TODO: -----------
-            # properly reshape the input according to the axis that are actually different
-            # in the LUT
-            # We should handle shape > 2
-            # Actually we could have per element TLU encoded in the subgraph
-            # So we should detect which shape we could remove
-            # the reduce sum should be along an axis and we should gather the best_a and best_b per axis
-            # -> just go through all constants and detect which shapes are not 1
-            # -> if a value in the shape is not 1, check if the value is always the same or not
-            # -----------------
             expected_shape = variable_input_node.output.shape
-            if self.verbose:
-                print(f"{variable_input_node.output.shape=}")
 
-            # Gather the shapes of the different constants in the subgraph
-            # TODO: also check for uniqueness in the constant
+            # TODO: also check for uniqueness in the constant 
+            # -> if the value is always unique for some axes no need to keep it
             # if the all values in the tensor are the same we don't need to take it into account
             constant_shapes = list()
             for elt in tlu_subgraph.graph.nodes:
@@ -357,6 +356,7 @@ class TLUOptimizer(GraphProcessor):
                 shape_ = tuple()
                 reduce_axes = tuple([idx for idx in range(len(expected_shape))])
 
+            # Create an input which the full input range 
             if all_node_inputs is None:
                 subgraph_inputs = np.array(
                     list(range(int(min_bound), int(max_bound) + 1))
@@ -385,10 +385,7 @@ class TLUOptimizer(GraphProcessor):
             else:
                 subgraph_inputs = all_node_inputs[tlu_node]
 
-            if self.verbose:
-                print(f"{subgraph_inputs.shape=} used for optimization")
-
-            # Compute TLU output on bounds without rounding or calibration
+            # Compute TLU output on bounds without rounding or calibration for reference
             sorted_nodes = list(nx.topological_sort(tlu_subgraph.graph))
             reference = vectorized_graph_eval(
                 tlu_subgraph, subgraph_inputs, sorted_nodes=sorted_nodes
@@ -396,357 +393,368 @@ class TLUOptimizer(GraphProcessor):
             assert isinstance(reference, np.ndarray)
             reference = reference.astype(np.int64)
 
-            # Compute with rounding but without calibration
-            accumulator_bit_width = Integer.that_can_represent(
-                subgraph_inputs
-            ).bit_width
-            lsbs_to_remove = accumulator_bit_width - self.rounding_threshold
-            assert isinstance(subgraph_inputs, np.ndarray)
-            if lsbs_to_remove > 0:
-                x = round_bit_pattern(subgraph_inputs, lsbs_to_remove=lsbs_to_remove)
-            else:
-                x = subgraph_inputs
-            assert isinstance(x, np.ndarray)
-            approximated_no_calib = vectorized_graph_eval(
-                tlu_subgraph,
-                x,
-                sorted_nodes=sorted_nodes,
-            )
-            assert isinstance(approximated_no_calib, np.ndarray)
-            approximated_no_calib = approximated_no_calib.astype(np.int64)
-            assert isinstance(reference, np.ndarray)
-            assert isinstance(approximated_no_calib, np.ndarray)
-            mse_no_calib = ((reference - approximated_no_calib) ** 2).mean(
-                axis=reduce_axes, keepdims=True
-            )
+            # # Compute with rounding but without calibration
+            # accumulator_bit_width = Integer.that_can_represent(
+            #     subgraph_inputs
+            # ).bit_width
+            # lsbs_to_remove = accumulator_bit_width - n_round
+            # assert isinstance(subgraph_inputs, np.ndarray)
+            # if lsbs_to_remove > 0:
+            #     x = round_bit_pattern(subgraph_inputs, lsbs_to_remove=lsbs_to_remove)
+            # else:
+            #     x = subgraph_inputs
+            # assert isinstance(x, np.ndarray)
+            # approximated_no_calib = vectorized_graph_eval(
+            #     tlu_subgraph,
+            #     x,
+            #     sorted_nodes=sorted_nodes,
+            # )
+            # assert isinstance(approximated_no_calib, np.ndarray)
+            # approximated_no_calib = approximated_no_calib.astype(np.int64)
+            # assert isinstance(reference, np.ndarray)
+            # assert isinstance(approximated_no_calib, np.ndarray)
+            # mse_no_calib = ((reference - approximated_no_calib) ** 2).mean(
+            #     axis=reduce_axes, keepdims=True
+            # )
 
-            optimization = "exact"
-            if optimization == "exact":
-                # Match the GCD of the steps k*2**n
+            # optimization = "exact"
+            # if optimization == "exact":
+            # Match the GCD of the steps k*2**n
 
-                # Initialize a and b such that no changes are done
-                best_a = (
-                    np.ones((1,) + subgraph_inputs.shape[1:], dtype=np.int64)
+            # Initialize a and b such that no changes are done
+            best_a = (
+                np.ones((1,) + subgraph_inputs.shape[1:], dtype=np.int64)
+            ).astype(np.int64)
+
+            best_b = (
+                np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64)
+            ).astype(np.int64)
+
+            n_elems = reference.shape[0]
+            # Data-bounds (TODO: should be per-axis)
+            x_min, x_max = (
+                min_bound,
+                max_bound,
+            )  
+
+            # Compute mask of values for which there is a change
+            change_mask = np.concatenate(
+                [
+                    np.zeros(reference[:1].shape).astype(bool),
+                    np.diff(reference, axis=0).astype(bool),
+                ]
+            ).astype(bool)
+
+            # Some accumulators
+            deltas = np.zeros(reference.shape[1:], dtype=np.int64)
+            rounding_thresholds = np.zeros(reference.shape[1:], dtype=np.int64)
+            n_rounds = np.ones(reference.shape[1:], dtype=np.int64)
+
+            # Apply on all elements
+            # TODO: vectorize this
+            for indexes in tqdm(
+                product(*[range(elt) for elt in reference.shape[1:]])
+            ):
+                selection = tuple([slice(0, n_elems), *indexes])
+                best_indexes = tuple([0, *indexes])
+                steps_indexes = subgraph_inputs[selection][change_mask[selection]]
+
+                if len(steps_indexes) == 0:
+                    # The function is constant
+                    continue
+
+                th_0 = steps_indexes[0]  # First x such f(x-1) != f(x)
+                delta_axis = np.diff(steps_indexes, axis=0)  # all step sizes
+
+                if len(delta_axis) == 0:
+                    # Single jump
+                    # We can just offset by the threshold and round to 1-bit
+                    print(f"{x_min=}, {th_0}, {x_max=}")
+                    best_b[best_indexes] = th_0
+                    best_a[best_indexes] = 1.0
+                    # Map th_0 to 0 then it's just about extracting the sign
+                    continue
+
+                # Get the common delta between all steps
+                delta = np.gcd.reduce(delta_axis, dtype=np.int64)
+                deltas[indexes] = delta
+
+                rounding_threshold = np.ceil(
+                    np.log2((x_max - x_min) / delta)
                 ).astype(np.int64)
+                rounding_thresholds[indexes] = rounding_threshold
 
-                best_b = (
-                    np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64)
-                ).astype(np.int64)
-
-                assert isinstance(reference, np.ndarray)
-                n_elems = reference.shape[0]
-
-                x_min, x_max = (
-                    min_bound,
-                    max_bound,
-                )  # Data-bounds (TODO: should be per-axis)
-
-                # Compute mask of values for which there is a change
-                change_mask = np.concatenate(
-                    [
-                        np.zeros(reference[:1].shape).astype(bool),
-                        np.diff(reference, axis=0).astype(bool),
-                    ]
-                ).astype(bool)
-
-                # Some accumulators
-                deltas = np.zeros(reference.shape[1:], dtype=np.int64)
-                rounding_thresholds = np.zeros(reference.shape[1:], dtype=np.int64)
-
-                # Apply on all elements
-                # TODO: vectorize this
-                for indexes in tqdm(
-                    product(*[range(elt) for elt in reference.shape[1:]])
-                ):
-                    selection = tuple([slice(0, n_elems), *indexes])
-                    steps_indexes = subgraph_inputs[selection][change_mask[selection]]
-
-                    if len(steps_indexes) == 0:
-                        # Nothing to do if the function is constant
-                        continue
-
-                    th_0 = steps_indexes[0]  # First x such f(x-1) != f(x)
-                    delta_axis = np.diff(steps_indexes, axis=0)  # all step sizes
-
-                    if len(delta_axis) == 0:
-                        # Single jump
-                        # TODO: handle this case
-                        # Should only be a matter of setting b to the proper offset
-                        # Some stuff to consider with the bounds probably
-                        continue
-
-                    # Get the common delta between all steps
-                    delta = np.gcd.reduce(delta_axis, dtype=np.int64)
-                    deltas[indexes] = delta
-
-                    rounding_threshold = np.ceil(np.log2((x_max - x_min) / delta)).astype(np.int64)
-                    rounding_thresholds[indexes] = rounding_threshold
-
-                    # Find new limits such that we have smallest bounds that include actual bounds and
-                    # can be expressed as th_0 + (k * delta)
-                    x_delta_min = (
-                        th_0
-                        - ((th_0 - x_min) // delta) * delta
-                        - bool(x_min % delta) * delta
-                    )
-                    x_delta_max = (
-                        th_0
-                        + ((x_max - th_0) // delta) * delta
-                        + bool(x_max % delta) * delta
-                    )
-
-                    # Number of elements in the new range for the given step size
-                    n_parts = (x_delta_max - x_delta_min) / delta
-                    n_round = np.ceil(np.log2(n_parts)).astype(np.int64)
-
-                    # TODO: FIX THIS
-                    if n_round > rounding_threshold:
-                        warnings.warn(f"{n_round=} > {rounding_threshold=}")
-                    # print(f"{n_parts=}, {n_round=} {rounding_threshold=}")
-
-                    # TODO: DEBUG: make sure there isn't a -1 around here
-                    exceed = ((2**n_round)) - n_parts
-
-                    left_bound_add = np.ceil(exceed / 2).astype(np.int64)
-                    right_bound_add = np.floor(exceed / 2).astype(np.int64)
-                    assert left_bound_add + right_bound_add == exceed
-                    # print(left_bound_add, right_bound_add)
-
-                    x_delta_min -= left_bound_add * delta
-                    x_delta_max += right_bound_add * delta
-
-                    debug_value = (x_delta_max - x_delta_min)/delta
-                    n_bits_before = np.log2(debug_value)
-                    n_bits_after = 23
-                    # assert n_bits % 1 == 0
-
-                    b_prime = (-2**(n_bits_before-1)) - x_delta_min
-                    a_prime = (2**(n_bits_after)) / (delta*((2**n_bits_before - 1)))
-                    # a_prime = 1
-
-                    # if a_prime % 1 != 0:
-                    #     print(f"{a_prime=}")
-                    #     breakpoint()
-                    # if a_prime < 1:
-                    #     print(f"{a_prime=}")
-                    #     breakpoint()
-
-                    rounding_function = self.rounding_function
-                    if False:
-                        # print("DEBUG: ", np.log2(((x_delta_max - x_delta_min) / delta)+1))
-
-                        middle = (x_delta_max - x_delta_min) / 2
-                        middle = np.median(np.arange(x_delta_min, x_delta_max+1, delta))
-                        # print(f"{x_delta_min-middle=}, {x_delta_max-middle=}")
-                        # print(f"{x_delta_min=}, {x_delta_max=}")
-
-                        rounding_function = self.rounding_function
-                        # TODO: figure out how to lower this
-                        n = 23  # Some high value
-
-                        # Find the proper n
-                        # if mult_first:
-                        #     a_prime = ((2**n) - delta) / (x_delta_max - x_delta_min)
-                        #
-                        #     b_prime = -(2 ** (n - 1)) - (
-                        #         x_delta_min * ((2**n - 1) / (x_delta_max - x_delta_min))
-                        #     )
-                        #     a_prime = np.floor(a_prime).astype(np.int64)
-                        #     b_prime = np.floor(b_prime).astype(np.int64)
-                        # else:
-
-                        a_prime = (2**n - 1) / (x_delta_max - x_delta_min)
-                        a_prime = np.floor(a_prime).astype(np.int64)
-                        b_prime = middle
-                        if rounding_function == round_bit_pattern:
-                            b_prime += delta / 2
-                        else:
-                            b_prime += 0
-                        # print(f"{a_prime=}, {b_prime=}")
-
-                        a_prime = np.rint(a_prime).astype(np.int64)
-                        # TODO: debug where to check when we should add a +1 or not
-                        b_prime = np.rint(b_prime).astype(np.int64) + 1
-
-                    best_indexes = tuple([0, *indexes])
-                    best_a[best_indexes] = a_prime
-                    best_b[best_indexes] = b_prime
-
-                    if False:
-                        # Plot TLU
-                        import matplotlib.pyplot as plt
-
-                        fig, ax = plt.subplots()
-                        ax.step(
-                            subgraph_inputs[selection],
-                            reference[selection],
-                            where="post",
-                        )
-                        ax.set_title(f"{delta=}, {rounding_threshold=}")
-                        fig.savefig(
-                            f"./{tlu_index}_{'_'.join(str(elt) for elt in indexes)}.png"
-                        )
-                        plt.close(fig)
-
-            elif optimization == "full_scale":
-                # DEPRECATED
-                warnings.warn("DEPRECATED")
-
-                # Map [min-bound, max-bound] -> [-2**n, 2**n] with linear scaling
-
-                # Calibrate
-                target_bit_width = 20
-                range_size = max_bound - min_bound
-                b_prime = np.floor(min_bound + range_size / 2)
-                a_prime = np.floor(
-                    2 ** (target_bit_width - 1)
-                    / (max((min_bound - b_prime), (max_bound - b_prime)) / 2)
+                # Find new limits such that we have smallest bounds that include actual bounds and
+                # can be expressed as th_0 + (k * delta)
+                x_delta_min = int(
+                    th_0
+                    - np.ceil((th_0 - x_min) / delta) * delta
                 )
-                best_a = (
-                    np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64) + a_prime
-                ).astype(np.int64)
-                best_b = (
-                    np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64) - b_prime
-                ).astype(np.int64)
-
-                # Compute mse with calibration
-                x = (subgraph_inputs + best_b) * best_a
-                accumulator_bit_width = Integer.that_can_represent(
-                    [x.min(), x.max()]
-                ).bit_width
-                lsbs_to_remove = accumulator_bit_width - self.rounding_threshold
-                if lsbs_to_remove > 0:
-                    x = round_bit_pattern(x, lsbs_to_remove=lsbs_to_remove)
-                assert isinstance(x, np.ndarray)
-                x = (x.astype(np.float64) / best_a.astype(np.float64)) - best_b.astype(
-                    np.float64
+                x_delta_max = int(
+                    th_0
+                    + np.ceil((x_max - th_0) / delta) * delta
                 )
-                approximated_calib = vectorized_graph_eval(
-                    tlu_subgraph,
-                    x,
-                    sorted_nodes=sorted_nodes,
-                )
-                assert isinstance(approximated_calib, np.ndarray)
-                approximated_calib = approximated_calib.astype(np.int64)
-                mse_calib = ((reference - approximated_calib) ** 2).mean(
-                    axis=reduce_axes, keepdims=True
-                )
-                print(f"{mse_calib.max()=} {mse_no_calib.max()=}")
-                best_mse = mse_calib
+                print(f"{x_delta_min=}, {x_min=}, {x_max=}, {x_delta_max=} {delta=} {th_0=}")
+                assert (x_delta_max - x_delta_min) % delta == 0
 
-            elif optimization == "exhaustive_search":
-                # DEPRECATED
-                warnings.warn("DEPRECATED")
-                # Exhaustive search on a and b with for-loop
-                # Reshape a and b to the size of the input
-                assert isinstance(variable_input_node.output, ValueDescription)
-                best_a = np.ones((1,) + subgraph_inputs.shape[1:], dtype=np.int64)
-                best_b = np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64)
-                # We can't use np.inf here because with mult with 0 it results in np.nan
-                best_mse = (
-                    np.ones((1,) + subgraph_inputs.shape[1:], dtype=np.float64)
-                    * np.finfo(np.float64).max
-                )
+                # TODO: FIX THIS n-round can be different for each axis
+                # Number of elements in the new range for the given step size
+                n_parts = ((x_delta_max - x_delta_min) / delta) + 1
+                n_round = int(np.ceil(np.log2(n_parts)).astype(np.int64))
+                n_rounds[indexes] = n_round
 
-                # log 2 things, the mse with respect to rounding with no calibration and with no rounding no calibration
-                x = (subgraph_inputs + best_b) * best_a
-                accumulator_bit_width = Integer.that_can_represent(x).bit_width
-                lsbs_to_remove = accumulator_bit_width - self.rounding_threshold
-                if lsbs_to_remove > 0:
-                    x = round_bit_pattern(x, lsbs_to_remove=lsbs_to_remove)
-                assert isinstance(x, np.ndarray)
-                x = (x.astype(np.float64) / best_a.astype(np.float64)) - best_b.astype(
-                    np.float64
-                )
-                approximated_no_calib = vectorized_graph_eval(
-                    tlu_subgraph,
-                    x,
-                    sorted_nodes=sorted_nodes,
-                )
+                # TODO: FIX THIS
+                # if n_round > rounding_threshold:
+                #     warnings.warn(f"{n_round=} > {rounding_threshold=}")
+                # print(f"{n_parts=}, {n_round=} {rounding_threshold=}")
 
-                # Search
-                a_values = np.arange(1, 2**self.n_bits_range_search)
-                b_values = np.arange(
-                    -(2**self.n_bits_range_search) + 1, 2**self.n_bits_range_search
-                )
-                print(f"Search a in [{a_values.min()}, {a_values.max()}]")
-                print(f"Search b in [{b_values.min()}, {b_values.max()}]")
-                for a, b in tqdm(
-                    product(a_values, b_values), total=len(a_values) * len(b_values)
-                ):
-                    a_arr = np.ones_like(best_a, dtype=np.int64) * a
-                    b_arr = np.ones_like(best_b, dtype=np.int64) * b
-                    x = (subgraph_inputs + b_arr) * a_arr
-                    accumulator_bit_width = Integer.that_can_represent(x).bit_width
-                    lsbs_to_remove = accumulator_bit_width - self.rounding_threshold
-                    # if self.verbose:
-                    #     print(f"{accumulator_bit_width=}, {lsbs_to_remove=} {self.rounding_threshold=}")
-                    if lsbs_to_remove > 0:
-                        x = round_bit_pattern(x, lsbs_to_remove=lsbs_to_remove)
-                    assert isinstance(x, np.ndarray)
-                    x = (
-                        x.astype(np.float64) / a_arr.astype(np.float64)
-                    ) - b_arr.astype(np.float64)
-                    approximated = vectorized_graph_eval(
-                        tlu_subgraph,
-                        x,
-                        sorted_nodes=sorted_nodes,
-                    )
-                    assert isinstance(reference, np.ndarray)
-                    assert isinstance(approximated, np.ndarray)
-                    mse = ((reference - approximated) ** 2).mean(
-                        axis=reduce_axes, keepdims=True
-                    )
-                    # print(f"{mse=} , {best_mse=}")
-                    mask = mse < best_mse
-                    best_mse = mse * mask + (best_mse * (~mask))
+                # TODO: DEBUG: make sure there isn't a -1 around here
+                exceed = ((2**n_round)) - n_parts
 
-                    best_a = a_arr * mask + (best_a * (~mask))
-                    best_b = b_arr * mask + (best_b * (~mask))
+                left_bound_add = np.ceil(exceed / 2).astype(np.int64)
+                right_bound_add = np.floor(exceed / 2).astype(np.int64)
+                assert left_bound_add + right_bound_add == exceed
 
-                    # This is probably more efficient?
-                    # best_a[mask] = a
-                    # best_b[mask] = b
+                # Update bounds to have exactly 2**n_round values in the range
+                x_delta_min -= left_bound_add * delta
+                x_delta_max += right_bound_add * delta
 
-                    # DEBUG
-                    if self.dump_all_figures:
-                        import matplotlib.pyplot as plt
+                print(f"{x_delta_min=}, {x_min=}, {x_max=}, {x_delta_max=}, {delta=} {th_0=}")
+                assert (x_delta_max - x_delta_min) % delta == 0
 
-                        select_slices = tuple(
-                            [
-                                slice(0, len(subgraph_inputs)),
-                                *(0 for _ in subgraph_inputs.shape[1:]),
-                            ]
-                        )
-                        fig, ax = plt.subplots()
-                        ax.step(
-                            subgraph_inputs[select_slices],
-                            reference[select_slices],
-                            label="reference",
-                        )
-                        ax.step(
-                            subgraph_inputs[select_slices],
-                            approximated_no_calib[select_slices],
-                            label="rounded - no calib",
-                            linestyle="dotted",
-                        )
-                        ax.step(
-                            subgraph_inputs[select_slices],
-                            approximated[select_slices],
-                            label="calibrated",
-                            linestyle="dashed",
-                        )
-                        ax.legend()
-                        ax.set_title(f"{a=} {b=} {tlu_index=} {select_slices=}")
-                        fig.savefig(f"{a}_{b}_{tlu_index}.png")
-                        plt.close(fig)
+                n_parts = ((x_delta_max - x_delta_min) / delta) + 1
+                n_bits_before = np.log2(n_parts)
+                assert n_bits_before % 1 == 0
 
-                    # TODO: We could also take the accumulator size into account as a criterion
-                    # for selection, for example if exactness is EXACT
-                    if (best_mse == 0.0).all():
-                        break
-            else:
-                raise ValueError()
+                # Arbitrarily high number
+                n_bits_after = 23
+
+                # TODO: DEBUG
+                # b_prime = x_delta_min - (-(2 ** (n_bits_before - 1)))
+                b_prime = ((x_delta_max - x_delta_min) / 2) + (delta / 2) + 1
+                a_prime = (2 ** (n_bits_after)) / (delta * ((2**n_bits_before - 1)))
+
+                print((x_delta_min - b_prime) * a_prime, (x_delta_max - b_prime) * a_prime)
+
+                # breakpoint()
+
+                best_a[best_indexes] = a_prime
+                best_b[best_indexes] = b_prime
+
+                # # print("DEBUG: ", np.log2(((x_delta_max - x_delta_min) / delta)+1))
+                #
+                # middle = (x_delta_max - x_delta_min) / 2
+                # middle = np.median(
+                #     np.arange(x_delta_min, x_delta_max + 1, delta)
+                # )
+                # # print(f"{x_delta_min-middle=}, {x_delta_max-middle=}")
+                # # print(f"{x_delta_min=}, {x_delta_max=}")
+                #
+                # rounding_function = self.rounding_function
+                # # TODO: figure out how to lower this
+                # n = 23  # Some high value
+                #
+                # # Find the proper n
+                # # if mult_first:
+                # #     a_prime = ((2**n) - delta) / (x_delta_max - x_delta_min)
+                # #
+                # #     b_prime = -(2 ** (n - 1)) - (
+                # #         x_delta_min * ((2**n - 1) / (x_delta_max - x_delta_min))
+                # #     )
+                # #     a_prime = np.floor(a_prime).astype(np.int64)
+                # #     b_prime = np.floor(b_prime).astype(np.int64)
+                # # else:
+                #
+                # a_prime = (2**n - 1) / (x_delta_max - x_delta_min)
+                # a_prime = np.floor(a_prime).astype(np.int64)
+                # b_prime = middle
+                # if rounding_function == round_bit_pattern:
+                #     b_prime += delta / 2
+                # else:
+                #     b_prime += 0
+                # # print(f"{a_prime=}, {b_prime=}")
+                #
+                # a_prime = np.rint(a_prime).astype(np.int64)
+                # # TODO: debug where to check when we should add a +1 or not
+                # b_prime = np.rint(b_prime).astype(np.int64) + 1
+            #         if False:
+            #             # Plot TLU
+            #             import matplotlib.pyplot as plt
+            #
+            #             fig, ax = plt.subplots()
+            #             ax.step(
+            #                 subgraph_inputs[selection],
+            #                 reference[selection],
+            #                 where="post",
+            #             )
+            #             ax.set_title(f"{delta=}, {rounding_threshold=}")
+            #             fig.savefig(
+            #                 f"./{tlu_index}_{'_'.join(str(elt) for elt in indexes)}.png"
+            #             )
+            #             plt.close(fig)
+            #
+            # elif optimization == "full_scale":
+            #     # DEPRECATED
+            #     warnings.warn("DEPRECATED")
+            #
+            #     # Map [min-bound, max-bound] -> [-2**n, 2**n] with linear scaling
+            #
+            #     # Calibrate
+            #     target_bit_width = 20
+            #     range_size = max_bound - min_bound
+            #     b_prime = np.floor(min_bound + range_size / 2)
+            #     a_prime = np.floor(
+            #         2 ** (target_bit_width - 1)
+            #         / (max((min_bound - b_prime), (max_bound - b_prime)) / 2)
+            #     )
+            #     best_a = (
+            #         np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64) + a_prime
+            #     ).astype(np.int64)
+            #     best_b = (
+            #         np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64) - b_prime
+            #     ).astype(np.int64)
+            #
+            #     # Compute mse with calibration
+            #     x = (subgraph_inputs + best_b) * best_a
+            #     accumulator_bit_width = Integer.that_can_represent(
+            #         [x.min(), x.max()]
+            #     ).bit_width
+            #     lsbs_to_remove = accumulator_bit_width - self.rounding_threshold
+            #     if lsbs_to_remove > 0:
+            #         x = round_bit_pattern(x, lsbs_to_remove=lsbs_to_remove)
+            #     assert isinstance(x, np.ndarray)
+            #     x = (x.astype(np.float64) / best_a.astype(np.float64)) - best_b.astype(
+            #         np.float64
+            #     )
+            #     approximated_calib = vectorized_graph_eval(
+            #         tlu_subgraph,
+            #         x,
+            #         sorted_nodes=sorted_nodes,
+            #     )
+            #     assert isinstance(approximated_calib, np.ndarray)
+            #     approximated_calib = approximated_calib.astype(np.int64)
+            #     mse_calib = ((reference - approximated_calib) ** 2).mean(
+            #         axis=reduce_axes, keepdims=True
+            #     )
+            #     print(f"{mse_calib.max()=} {mse_no_calib.max()=}")
+            #     best_mse = mse_calib
+            #
+            # elif optimization == "exhaustive_search":
+            #     # DEPRECATED
+            #     warnings.warn("DEPRECATED")
+            #     # Exhaustive search on a and b with for-loop
+            #     # Reshape a and b to the size of the input
+            #     assert isinstance(variable_input_node.output, ValueDescription)
+            #     best_a = np.ones((1,) + subgraph_inputs.shape[1:], dtype=np.int64)
+            #     best_b = np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64)
+            #     # We can't use np.inf here because with mult with 0 it results in np.nan
+            #     best_mse = (
+            #         np.ones((1,) + subgraph_inputs.shape[1:], dtype=np.float64)
+            #         * np.finfo(np.float64).max
+            #     )
+            #
+            #     # log 2 things, the mse with respect to rounding with no calibration and with no rounding no calibration
+            #     x = (subgraph_inputs + best_b) * best_a
+            #     accumulator_bit_width = Integer.that_can_represent(x).bit_width
+            #     lsbs_to_remove = accumulator_bit_width - self.rounding_threshold
+            #     if lsbs_to_remove > 0:
+            #         x = round_bit_pattern(x, lsbs_to_remove=lsbs_to_remove)
+            #     assert isinstance(x, np.ndarray)
+            #     x = (x.astype(np.float64) / best_a.astype(np.float64)) - best_b.astype(
+            #         np.float64
+            #     )
+            #     approximated_no_calib = vectorized_graph_eval(
+            #         tlu_subgraph,
+            #         x,
+            #         sorted_nodes=sorted_nodes,
+            #     )
+            #
+            #     # Search
+            #     a_values = np.arange(1, 2**self.n_bits_range_search)
+            #     b_values = np.arange(
+            #         -(2**self.n_bits_range_search) + 1, 2**self.n_bits_range_search
+            #     )
+            #     print(f"Search a in [{a_values.min()}, {a_values.max()}]")
+            #     print(f"Search b in [{b_values.min()}, {b_values.max()}]")
+            #     for a, b in tqdm(
+            #         product(a_values, b_values), total=len(a_values) * len(b_values)
+            #     ):
+            #         a_arr = np.ones_like(best_a, dtype=np.int64) * a
+            #         b_arr = np.ones_like(best_b, dtype=np.int64) * b
+            #         x = (subgraph_inputs + b_arr) * a_arr
+            #         accumulator_bit_width = Integer.that_can_represent(x).bit_width
+            #         lsbs_to_remove = accumulator_bit_width - self.rounding_threshold
+            #         # if self.verbose:
+            #         #     print(f"{accumulator_bit_width=}, {lsbs_to_remove=} {self.rounding_threshold=}")
+            #         if lsbs_to_remove > 0:
+            #             x = round_bit_pattern(x, lsbs_to_remove=lsbs_to_remove)
+            #         assert isinstance(x, np.ndarray)
+            #         x = (
+            #             x.astype(np.float64) / a_arr.astype(np.float64)
+            #         ) - b_arr.astype(np.float64)
+            #         approximated = vectorized_graph_eval(
+            #             tlu_subgraph,
+            #             x,
+            #             sorted_nodes=sorted_nodes,
+            #         )
+            #         assert isinstance(reference, np.ndarray)
+            #         assert isinstance(approximated, np.ndarray)
+            #         mse = ((reference - approximated) ** 2).mean(
+            #             axis=reduce_axes, keepdims=True
+            #         )
+            #         # print(f"{mse=} , {best_mse=}")
+            #         mask = mse < best_mse
+            #         best_mse = mse * mask + (best_mse * (~mask))
+            #
+            #         best_a = a_arr * mask + (best_a * (~mask))
+            #         best_b = b_arr * mask + (best_b * (~mask))
+            #
+            #         # This is probably more efficient?
+            #         # best_a[mask] = a
+            #         # best_b[mask] = b
+            #
+            #         # DEBUG
+            #         if self.dump_all_figures:
+            #             import matplotlib.pyplot as plt
+            #
+            #             select_slices = tuple(
+            #                 [
+            #                     slice(0, len(subgraph_inputs)),
+            #                     *(0 for _ in subgraph_inputs.shape[1:]),
+            #                 ]
+            #             )
+            #             fig, ax = plt.subplots()
+            #             ax.step(
+            #                 subgraph_inputs[select_slices],
+            #                 reference[select_slices],
+            #                 label="reference",
+            #             )
+            #             ax.step(
+            #                 subgraph_inputs[select_slices],
+            #                 approximated_no_calib[select_slices],
+            #                 label="rounded - no calib",
+            #                 linestyle="dotted",
+            #             )
+            #             ax.step(
+            #                 subgraph_inputs[select_slices],
+            #                 approximated[select_slices],
+            #                 label="calibrated",
+            #                 linestyle="dashed",
+            #             )
+            #             ax.legend()
+            #             ax.set_title(f"{a=} {b=} {tlu_index=} {select_slices=}")
+            #             fig.savefig(f"{a}_{b}_{tlu_index}.png")
+            #             plt.close(fig)
+            #
+            #         # TODO: We could also take the accumulator size into account as a criterion
+            #         # for selection, for example if exactness is EXACT
+            #         if (best_mse == 0.0).all():
+            #             break
+            # else:
+            #     raise ValueError()
+
+            n_round = int(n_rounds.max())
+            print(f"ROUNDING TO {n_round}")
 
             # We need to make sure that we have the correct shape when adding constants in the graph
             # As Concrete Python doesn't handle broadcasting at the graph level
@@ -758,7 +766,8 @@ class TLUOptimizer(GraphProcessor):
                 best_b, shape=(1,) + variable_input_node.output.shape[1:]
             )
             print(f"DEBUG: {best_a.shape=}, {best_b.shape=}")
-            assert (best_a >= 1.).all()
+            print(f"DEBUG: {best_a=}, {best_b=}")
+            assert (best_a >= 1.0).all()
             print(
                 f"DEBUG: {np.ceil(np.log2(np.abs(best_a).max()))=}, {np.ceil(np.log2(max(np.abs(best_b).max(), 1)))=}, "
             )
@@ -767,7 +776,7 @@ class TLUOptimizer(GraphProcessor):
             # Add scaling and rounding to the main graph
             # ------------------------------------------
 
-            # Add b
+            # Subtract b
             b_constant_node = Node.constant(best_b)
             b_constant_node.output = deepcopy(variable_input_node.output)
             b_constant_node.output.is_encrypted = False
@@ -780,6 +789,7 @@ class TLUOptimizer(GraphProcessor):
             )
             add_bounds = ((min_bound - best_b).min(), (max_bound - best_b).max())
             result_dtype = Integer.that_can_represent(list(add_bounds))
+            # X - b
             add_node = Node.generic(
                 name="substract",
                 inputs=[
@@ -808,6 +818,7 @@ class TLUOptimizer(GraphProcessor):
                 ((max_bound - best_b) * best_a).max(),
             )
             result_dtype = Integer.that_can_represent(list(mul_bounds))
+            # (X - b) * a
             mul_node = Node.generic(
                 name="multiply",
                 inputs=[deepcopy(add_node.output), deepcopy(a_constant_node.output)],
@@ -829,7 +840,7 @@ class TLUOptimizer(GraphProcessor):
 
             # Add rounding
             assert isinstance(mul_node.output.dtype, Integer)
-            lsbs_to_remove = mul_node.output.dtype.bit_width - self.rounding_threshold
+            lsbs_to_remove = int(mul_node.output.dtype.bit_width - n_round)
             if self.verbose:
                 print(
                     f"Removing {lsbs_to_remove} lsbs to {mul_node.output.dtype.bit_width} bits"
@@ -837,11 +848,16 @@ class TLUOptimizer(GraphProcessor):
 
             if lsbs_to_remove > 0:
                 # Create rounding node
+                self._rounding_bits[tlu_index] = {
+                    "accumulator_bit_width": mul_node.output.dtype.bit_width,
+                    "msbs_to_keep": n_round,
+                    "lsbs_to_remove": lsbs_to_remove,
+                }
                 rounding_node = Node.generic(
-                    name=rounding_function.__name__,
+                    name=self.rounding_function.__name__,
                     inputs=[deepcopy(mul_node.output)],
                     output=deepcopy(mul_node.output),
-                    operation=rounding_function,
+                    operation=self.rounding_function,
                     kwargs={
                         "lsbs_to_remove": lsbs_to_remove,
                         "exactness": self.exactness,
@@ -853,7 +869,7 @@ class TLUOptimizer(GraphProcessor):
                 )
                 rounding_node.properties["final_lsbs_to_remove"] = lsbs_to_remove
                 rounding_node.properties["resulting_bit_width"] = (
-                    self.rounding_threshold
+                    n_round
                 )
                 rounding_node.properties["overflow_detected"] = False
                 rounding_node.properties["overflow_protection"] = False
@@ -884,14 +900,16 @@ class TLUOptimizer(GraphProcessor):
             for node in tlu_subgraph.graph:
                 if (
                     "name" in node.properties
-                    and node.properties["name"] == "astype"
-                    and node.properties["kwargs"]["dtype"] == np.float64
+                    and node.properties["name"] == "input"
                 ):
                     assert (
                         input_node is None
                     ), "More than one astype float node detected"
                     input_node = node
-            assert input_node is not None, "Couldn't detect astype float node"
+
+            if input_node is None:
+                breakpoint()
+                raise ValueError("Couldn't detect astype float node")
 
             # input_node = next(nx.topological_sort(tlu_subgraph.graph))
 
@@ -962,7 +980,7 @@ class TLUOptimizer(GraphProcessor):
             if sanity_check:
                 x = (subgraph_inputs + best_b) * best_a
                 if lsbs_to_remove > 0:
-                    x = rounding_function(
+                    x = self.rounding_function(
                         x=x,
                         lsbs_to_remove=lsbs_to_remove,
                         overflow_protection=self.overflow_protection,
