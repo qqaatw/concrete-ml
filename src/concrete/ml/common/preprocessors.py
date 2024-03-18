@@ -220,6 +220,24 @@ def vectorized_graph_eval_all(graph, *inputs, sorted_nodes: Optional[List] = Non
 
     return node_results, node_inputs
 
+def merge_tlu_constant_shapes(constant_shapes):
+    # For each axis take the max value for the constant
+    if constant_shapes:
+        shape_ = tuple(
+            [
+                max(
+                    constant_shape[idx]
+                    for constant_shape in constant_shapes
+                    if len(constant_shape) > idx
+                )
+                for idx in range(max(len(elt) for elt in constant_shapes))
+            ]
+        )
+        reduce_axes = tuple([idx for idx, elt in enumerate(shape_) if elt == 1])
+    else:
+        shape_ = tuple()
+        reduce_axes = tuple([idx for idx in range(len(expected_shape))])
+    return shape_, reduce_axes
 
 # TODO: serialize the output of the TLU optimizer to be able to re-use the results without having to re-do the whole search
 # i.e. some cache system -> basically if the subgraph is the same and the bounds too
@@ -251,11 +269,111 @@ class TLUOptimizer(GraphProcessor):
             self.dump_all_figures = False
         self._rounding_bits: Dict[int, Dict[str, int]] = {}
 
+
+    @staticmethod
+    def extract_tlu_input_bounds(variable_input_node):
+        # Extract TLU input bounds
+        if variable_input_node.bounds is not None:
+            min_bound, max_bound = variable_input_node.bounds
+            # For some reason sometimes the bounds booleans
+            if isinstance(min_bound, bool):
+                min_bound = int(min_bound)
+            if isinstance(max_bound, bool):
+                max_bound = int(max_bound)
+            if isinstance(min_bound, np.bool_):
+                min_bound = min_bound.astype(np.int64)
+            if isinstance(max_bound, np.bool_):
+                max_bound = max_bound.astype(np.int64)
+            assert isinstance(min_bound, int) or (
+                isinstance(min_bound, np.ScalarType) and min_bound.dtype == np.int64
+            ), f"{type(min_bound)=}"
+            assert isinstance(max_bound, int) or (
+                isinstance(max_bound, np.ScalarType) and max_bound.dtype == np.int64
+            ), f"{type(max_bound)=}"
+        else:
+            raise ValueError("Bounds not found")
+
+        return min_bound, max_bound
+
+    @staticmethod
+    def compute_tlu_output_shapes(tlu_subgraph):
+        constant_shapes = list()
+        orig_constant_shapes = list()
+        for elt in tlu_subgraph.graph.nodes:
+            assert isinstance(elt, Node)
+            if isinstance(elt.evaluator, ConstantEvaluator):
+                constant_shape = list(elt.output.shape)
+                value = elt.evaluator.properties["constant"]
+                if constant_shape:
+                    orig_constant_shapes.append(tuple(constant_shape))
+                    for axis in range(len(value.shape)):
+                        unique_values_per_axis = np.unique(value, axis=axis)
+                        if unique_values_per_axis.shape[axis] == 1:
+                            constant_shape[axis] = 1
+                    
+                    constant_shapes.append(tuple(constant_shape))                        
+
+        # This shape includes constant axes folding and only reduces broadcasted axes
+        shape_, reduce_axes = merge_tlu_constant_shapes(constant_shapes)
+
+        # This shape excludes constant axes
+        orig_shape_, _ = merge_tlu_constant_shapes(orig_constant_shapes)
+
+        return shape_, reduce_axes, orig_shape_
+
+    @staticmethod
+    def get_tlu_node_subgraph_input_node(graph, tlu_node):
+        pred_nodes = graph.ordered_preds_of(tlu_node)
+        variable_input_indices = []
+        for pred_index, pred_node in enumerate(pred_nodes):
+            if pred_node.operation != Operation.Constant:
+                variable_input_indices.append(pred_index)
+
+        if len(variable_input_indices) != 1:
+            raise ValueError("TLU node got more than one variable input")
+
+        # TODO: assert that there isn't any rounding nodes before
+
+        variable_input_index = variable_input_indices[0]
+        variable_input_node: Node = pred_nodes[variable_input_index]        
+        return variable_input_node
+
+    @staticmethod
+    def make_subgraph_input_tensor(min_bound, max_bound, orig_shape_, expected_shape):
+        subgraph_inputs = np.array(
+            list(range(int(min_bound), int(max_bound) + 1))
+        )
+        subgraph_input_shape = tuple([len(subgraph_inputs), *orig_shape_[1:]])
+
+        if len(expected_shape) > 1:
+            assert expected_shape[0] == 1
+            subgraph_inputs = np.tile(
+                subgraph_inputs[
+                    tuple(
+                        [
+                            slice(0, len(subgraph_inputs), 1),
+                            *[
+                                np.newaxis
+                                for _ in range(len(expected_shape) - 1)
+                            ],
+                        ]
+                    )
+                ],
+                expected_shape,
+            )
+
+            subgraph_inputs = subgraph_inputs[
+                tuple([slice(0, elt, 1) for elt in subgraph_input_shape])
+            ]
+
+        return subgraph_inputs
+
     def apply(self, graph: Graph):
         if self.rounding_threshold is None:
             return
 
         # If dataset we need to compute the input/output of all tlu nodes
+        # Andrei: When is dataset set ?? 
         if self.dataset is not None:
             all_nodes_results, all_node_inputs = vectorized_graph_eval_all(
                 graph, *self.dataset
@@ -277,26 +395,18 @@ class TLUOptimizer(GraphProcessor):
             # 3. Insert rounding to the graph
             # 4. Insert a and b in the subgraph
 
+            if not "subgraph" in tlu_node.evaluator.properties["kwargs"]:
+                continue
+            
             tlu_subgraph: Graph = tlu_node.evaluator.properties["kwargs"]["subgraph"]
 
             if self.verbose:
                 print(tlu_subgraph.format())
 
-            pred_nodes = graph.ordered_preds_of(tlu_node)
-            variable_input_indices = []
-            for pred_index, pred_node in enumerate(pred_nodes):
-                if pred_node.operation != Operation.Constant:
-                    variable_input_indices.append(pred_index)
+            variable_input_node = self.get_tlu_node_subgraph_input_node(graph, tlu_node)
 
-            if len(variable_input_indices) != 1:
-                raise ValueError("TLU node got more than one variable input")
-
-            # TODO: assert that there isn't any rounding nodes before
-
-            variable_input_index = variable_input_indices[0]
-            variable_input_node: Node = pred_nodes[variable_input_index]
+            # Check subgraph input datatype, must be Integer
             variable_input_dtype = variable_input_node.output.dtype
-
             if not isinstance(variable_input_dtype, Integer):
                 raise ValueError("TLU node got input dtype that isn't integer")
 
@@ -304,93 +414,22 @@ class TLUOptimizer(GraphProcessor):
             # Search a and b that reduce the MSE of the TLU
             # ---------------------------------------------
 
-            # Extract TLU input bounds
-            if variable_input_node.bounds is not None:
-                min_bound, max_bound = variable_input_node.bounds
-                # For some reason sometimes the bounds booleans
-                if isinstance(min_bound, bool):
-                    min_bound = int(min_bound)
-                if isinstance(max_bound, bool):
-                    max_bound = int(max_bound)
-                if isinstance(min_bound, np.bool_):
-                    min_bound = min_bound.astype(np.int64)
-                if isinstance(max_bound, np.bool_):
-                    max_bound = max_bound.astype(np.int64)
-                assert isinstance(min_bound, int) or (
-                    isinstance(min_bound, np.ScalarType) and min_bound.dtype == np.int64
-                ), f"{type(min_bound)=}"
-                assert isinstance(max_bound, int) or (
-                    isinstance(max_bound, np.ScalarType) and max_bound.dtype == np.int64
-                ), f"{type(max_bound)=}"
-            else:
-                raise ValueError("Bounds not found")
+            min_bound, max_bound = self.extract_tlu_input_bounds(variable_input_node)
 
             # Create input with proper shape on the bounds for optimization
             expected_shape = variable_input_node.output.shape
 
-            # TODO: also check for uniqueness in the constant 
-            # -> if the value is always unique for some axes no need to keep it
-            # if the all values in the tensor are the same we don't need to take it into account
-            constant_shapes = list()
-            for elt in tlu_subgraph.graph.nodes:
-                assert isinstance(elt, Node)
-                if isinstance(elt.evaluator, ConstantEvaluator):
-                    constant_shape = elt.output.shape
-                    if constant_shape:
-                        constant_shapes.append(constant_shape)
-
-            # For each axis take the max value for the constant
-            if constant_shapes:
-                shape_ = tuple(
-                    [
-                        max(
-                            constant_shape[idx]
-                            for constant_shape in constant_shapes
-                            if len(constant_shape) > idx
-                        )
-                        for idx in range(max(len(elt) for elt in constant_shapes))
-                    ]
-                )
-                reduce_axes = tuple([idx for idx, elt in enumerate(shape_) if elt == 1])
-            else:
-                shape_ = tuple()
-                reduce_axes = tuple([idx for idx in range(len(expected_shape))])
+            shape_, reduce_axes, orig_shape_ = self.compute_tlu_output_shapes(tlu_subgraph)
 
             # Create an input which the full input range 
-            if all_node_inputs is None:
-                subgraph_inputs = np.array(
-                    list(range(int(min_bound), int(max_bound) + 1))
-                )
-                subgraph_input_shape = tuple([len(subgraph_inputs), *shape_[1:]])
-
-                if len(expected_shape) > 1:
-                    assert expected_shape[0] == 1
-                    subgraph_inputs = np.tile(
-                        subgraph_inputs[
-                            tuple(
-                                [
-                                    slice(0, len(subgraph_inputs), 1),
-                                    *[
-                                        np.newaxis
-                                        for _ in range(len(expected_shape) - 1)
-                                    ],
-                                ]
-                            )
-                        ],
-                        expected_shape,
-                    )
-                    subgraph_inputs = subgraph_inputs[
-                        tuple([slice(0, elt, 1) for elt in subgraph_input_shape])
-                    ]
-            else:
-                subgraph_inputs = all_node_inputs[tlu_node]
+            subgraph_inputs = self.make_subgraph_input_tensor(min_bound, max_bound, orig_shape_, expected_shape)
 
             # Compute TLU output on bounds without rounding or calibration for reference
             sorted_nodes = list(nx.topological_sort(tlu_subgraph.graph))
             reference = vectorized_graph_eval(
                 tlu_subgraph, subgraph_inputs, sorted_nodes=sorted_nodes
             )
-            assert isinstance(reference, np.ndarray)
+            assert isinstance(reference, np.ndarray)            
             reference = reference.astype(np.int64)
 
             # # Compute with rounding but without calibration
@@ -423,11 +462,11 @@ class TLUOptimizer(GraphProcessor):
 
             # Initialize a and b such that no changes are done
             best_a = (
-                np.ones((1,) + subgraph_inputs.shape[1:], dtype=np.int64)
+                np.ones((1,) + shape_[1:], dtype=np.int64)
             ).astype(np.int64)
 
             best_b = (
-                np.zeros((1,) + subgraph_inputs.shape[1:], dtype=np.int64)
+                np.zeros((1,) + shape_[1:], dtype=np.int64)
             ).astype(np.int64)
 
             n_elems = reference.shape[0]
@@ -446,14 +485,16 @@ class TLUOptimizer(GraphProcessor):
             ).astype(bool)
 
             # Some accumulators
-            deltas = np.zeros(reference.shape[1:], dtype=np.int64)
-            rounding_thresholds = np.zeros(reference.shape[1:], dtype=np.int64)
+            deltas = np.zeros(shape_[1:], dtype=np.int64)
+            rounding_thresholds = np.zeros(shape_[1:], dtype=np.int64)
             n_rounds = np.ones(reference.shape[1:], dtype=np.int64)
 
             # Apply on all elements
             # TODO: vectorize this
+            deltas_per_tlu = []
+
             for indexes in tqdm(
-                product(*[range(elt) for elt in reference.shape[1:]])
+                product(*[range(elt) for elt in shape_[1:]])
             ):
                 selection = tuple([slice(0, n_elems), *indexes])
                 best_indexes = tuple([0, *indexes])
@@ -476,10 +517,11 @@ class TLUOptimizer(GraphProcessor):
                     continue
 
                 # Get the common delta between all steps
-                delta = np.gcd.reduce(delta_axis, dtype=np.int64)
+                deltas_per_tlu.append(np.unique(delta_axis))
+                delta = np.bincount(delta_axis).argmax()
                 deltas[indexes] = delta
 
-                rounding_threshold = np.ceil(
+                rounding_threshold = np.around(
                     np.log2((x_max - x_min) / delta)
                 ).astype(np.int64)
                 rounding_thresholds[indexes] = rounding_threshold
@@ -500,7 +542,7 @@ class TLUOptimizer(GraphProcessor):
                 # TODO: FIX THIS n-round can be different for each axis
                 # Number of elements in the new range for the given step size
                 n_parts = ((x_delta_max - x_delta_min) / delta) + 1
-                n_round = int(np.ceil(np.log2(n_parts)).astype(np.int64))
+                n_round = int(np.around(np.log2(n_parts)).astype(np.int64))
 
                 # TODO: FIX THIS
                 # if n_round > rounding_threshold:
@@ -599,6 +641,11 @@ class TLUOptimizer(GraphProcessor):
             best_b = np.broadcast_to(
                 best_b, shape=(1,) + variable_input_node.output.shape[1:]
             )
+
+            tlu_node.properties["attributes"]["deltas_per_tlu"] = deltas_per_tlu
+            tlu_node.properties['attributes']['opt_round_a'] = best_a
+            tlu_node.properties['attributes']['opt_round_b'] = best_b
+
             print(f"DEBUG: {best_a.shape=}, {best_b.shape=}")
             print(f"DEBUG: {best_a=}, {best_b=}")
             assert (best_a >= 1.0).all()
