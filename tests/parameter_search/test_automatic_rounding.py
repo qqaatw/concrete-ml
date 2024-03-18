@@ -2,6 +2,7 @@
 import os
 import warnings
 from pathlib import Path
+import re
 
 import numpy
 import pytest
@@ -74,9 +75,9 @@ def test_tlu_analysis_granularity(is_conv, tlu_test_mode):
     else:
         assert False, "Invalid tlu granularity test mode"
 
-def test_tlu_analysis_optimization(load_data):
+@pytest.mark.parametrize("n_bits", range(2, 6))
+def test_tlu_analysis_optimization(load_data, n_bits):
 
-    n_bits = 4
     params = {
         "module__n_w_bits": n_bits,
         "module__n_a_bits": n_bits,
@@ -122,6 +123,7 @@ def test_tlu_analysis_optimization(load_data):
     model.compile(
         x,
         configuration=cfg,
+        verbose=True
     )
     
     # Find optimized TLUs
@@ -136,4 +138,81 @@ def test_tlu_analysis_optimization(load_data):
     tlu_node = tlu_nodes[0]
     scales_tlu = tlu_node.properties["attributes"]["opt_round_a"]
     offsets_tlu = tlu_node.properties["attributes"]["opt_round_b"]
+
+    count_reinterpret = 0
+    for line in model.quantized_module_.fhe_circuit.mlir.split("\n"):
+        if "reinterpret_precision" in line:
+            regex = r"-> tensor<(\d+x)*\!FHE.[A-z]+<(\d+)"
+            
+            matches = re.finditer(regex, line.strip())
+            for matchNum, m in enumerate(matches, start=1):
+                bw = int(m.group(2))
+                if bw > 24: 
+                    continue
+                assert(bw == n_bits)
+                count_reinterpret += 1
+
+    assert count_reinterpret > 0, "Could not find reinterpret_cast nodes in graph to analyze"
+
     pass
+
+@pytest.mark.parametrize("n_bits", range(4, 9))
+def test_tlu_optimization_cryptoparam_finding(load_data, n_bits):
+
+    params = {
+        "module__n_w_bits": n_bits,
+        "module__n_a_bits": n_bits,
+        "module__n_layers": 2,
+        "max_epochs": 10,
+    }
+
+    model = NeuralNetClassifier(**params)
+
+    x, y = load_data(NeuralNetClassifier)
+
+    model.fit(x, y)
+
+    compile_ok_with_adjust = True
+    try:
+        tlu_optimizer = TLUOptimizer(
+            rounding_threshold=n_bits, 
+            verbose=True, 
+            n_bits_range_search=5, 
+            exactness=Exactness.APPROXIMATE,
+        )
+        cfg = Configuration(
+            show_optimizer=False,
+            additional_pre_processors=[tlu_optimizer]
+        )
+
+        # Compile the quantized model
+        model.compile(
+            x,
+            configuration=cfg,
+        )
+    except RuntimeError as err:
+        if len(err.args) and err.args[0] == "NoParametersFound":
+            compile_ok_with_adjust = False
+        else:
+            raise err
+
+    compile_ok_with_no_adjust = True
+    try:
+        # Compile the quantized model
+        cfg = Configuration(
+            show_optimizer=False,
+        )
+
+        # Compile the quantized model
+        model.compile(
+            x,
+            configuration=cfg,
+        )
+    except RuntimeError as err:
+        if len(err.args) and err.args[0] == "NoParametersFound":
+            compile_ok_with_no_adjust = False
+        else:
+            raise err
+
+
+    assert(compile_ok_with_adjust == compile_ok_with_no_adjust)
