@@ -50,4 +50,4 @@ Our team of experts usually answers within 24 hours in working days.
 
 ***
 
-[Survey test](https://zama-project.webflow.io/test-page)
+[Survey test link](https://zama-project.webflow.io/developer-survey)
