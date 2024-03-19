@@ -521,7 +521,9 @@ class TLUOptimizer(GraphProcessor):
                 delta = np.bincount(delta_axis).argmax()
                 deltas[indexes] = delta
 
-                rounding_threshold = np.around(
+                BIT_WIDTH_ESTIM_FUNC = np.ceil # np.around
+
+                rounding_threshold = BIT_WIDTH_ESTIM_FUNC(
                     np.log2((x_max - x_min) / delta)
                 ).astype(np.int64)
                 rounding_thresholds[indexes] = rounding_threshold
@@ -542,7 +544,7 @@ class TLUOptimizer(GraphProcessor):
                 # TODO: FIX THIS n-round can be different for each axis
                 # Number of elements in the new range for the given step size
                 n_parts = ((x_delta_max - x_delta_min) / delta) + 1
-                n_round = int(np.around(np.log2(n_parts)).astype(np.int64))
+                n_round = int(BIT_WIDTH_ESTIM_FUNC(np.log2(n_parts)).astype(np.int64))
 
                 # TODO: FIX THIS
                 # if n_round > rounding_threshold:
@@ -576,13 +578,13 @@ class TLUOptimizer(GraphProcessor):
                 a_prime = (2 ** (n_bits_after)) / (delta * ((2**n_bits_before - 1)))
 
                 # NOTEBOOK IMPLEMENTATION
-                n_round = int(np.ceil(np.log2((x_max - x_min)/delta)))
+                n_round = int(np.around(np.log2((x_max - x_min)/delta)))
                 # Find new limits such that we have smallest bounds that include actual bounds as t_0 + (k * step_size)
                 x_delta_min = th_0 - ((th_0 - x_min) // delta ) * delta - bool(x_min % delta)*delta
                 x_delta_max = th_0 + ((x_max - th_0) // delta ) * delta + bool(x_max % delta)*delta
                  # Number of elements in the new range for the given step size
                 n_parts = ((x_delta_max - x_delta_min) / delta)
-                n_round = np.ceil(np.log2(n_parts)).astype(np.int64)
+                n_round = BIT_WIDTH_ESTIM_FUNC(np.log2(n_parts)).astype(np.int64)
                 assert n_round <= rounding_threshold, f"{n_round=} > {rounding_threshold=}"
                 print(f"{n_parts=}, {n_round=}")
                 
@@ -632,6 +634,10 @@ class TLUOptimizer(GraphProcessor):
             n_round = int(n_rounds.max())
             print(f"ROUNDING TO {n_round}")
 
+            tlu_node.properties["attributes"]["deltas_per_tlu"] = deltas_per_tlu
+            tlu_node.properties['attributes']['opt_round_a'] = best_a
+            tlu_node.properties['attributes']['opt_round_b'] = best_b
+
             # We need to make sure that we have the correct shape when adding constants in the graph
             # As Concrete Python doesn't handle broadcasting at the graph level
             assert isinstance(variable_input_node.output, ValueDescription)
@@ -641,10 +647,6 @@ class TLUOptimizer(GraphProcessor):
             best_b = np.broadcast_to(
                 best_b, shape=(1,) + variable_input_node.output.shape[1:]
             )
-
-            tlu_node.properties["attributes"]["deltas_per_tlu"] = deltas_per_tlu
-            tlu_node.properties['attributes']['opt_round_a'] = best_a
-            tlu_node.properties['attributes']['opt_round_b'] = best_b
 
             print(f"DEBUG: {best_a.shape=}, {best_b.shape=}")
             print(f"DEBUG: {best_a=}, {best_b=}")
