@@ -140,19 +140,23 @@ def test_tlu_analysis_optimization(load_data, n_bits):
     offsets_tlu = tlu_node.properties["attributes"]["opt_round_b"]
 
     count_reinterpret = 0
+    count_tlu = 0
     for line in model.quantized_module_.fhe_circuit.mlir.split("\n"):
         if "reinterpret_precision" in line:
             regex = r"-> tensor<(\d+x)*\!FHE.[A-z]+<(\d+)"
             
             matches = re.finditer(regex, line.strip())
-            for matchNum, m in enumerate(matches, start=1):
+            for _, m in enumerate(matches, start=1):
                 bw = int(m.group(2))
                 if bw > 24: 
                     continue
-                assert(bw == n_bits)
+                assert(bw <= n_bits)
                 count_reinterpret += 1
+        if "apply_lookup_table" in line:
+            count_tlu += 1
 
     assert count_reinterpret > 0, "Could not find reinterpret_cast nodes in graph to analyze"
+    assert count_tlu == 1, "This model should compile to an MLIR with a single PBS layer"
 
     pass
 

@@ -672,7 +672,7 @@ class TLUOptimizer(GraphProcessor):
             result_dtype = Integer.that_can_represent(list(substract_bounds))
             # X - b
             substract_node = Node.generic(
-                name="substract",
+                name="subtract",
                 inputs=[
                     deepcopy(variable_input_node.output),
                     deepcopy(b_constant_node.output),
