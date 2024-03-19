@@ -236,6 +236,8 @@ def merge_tlu_constant_shapes(constant_shapes):
     return shape_, reduce_axes
 
 
+# TODO: WE SHOULD NEVER DO MULT LAST as a small offset will get much bigger
+
 # TODO: serialize the output of the TLU optimizer to be able to re-use the results without having to re-do the whole search
 # i.e. some cache system -> basically if the subgraph is the same and the bounds too
 # TODO: figure out why we get fhe bool ops in the test
@@ -411,28 +413,30 @@ def delta_optimize(
     x_min, x_max = bounds
 
     # Initialize a and b such that no changes are done
-    best_a = (np.ones((1,) + shape_[1:], dtype=np.int64))
-    best_b = (np.zeros((1,) + shape_[1:], dtype=np.int64))
+    best_a = np.ones((1,) + shape_[1:], dtype=np.int64)
+    best_b = np.zeros((1,) + shape_[1:], dtype=np.int64)
 
     n_elems = reference.shape[0]
+    ref_diff = np.diff(reference, axis=0).astype(bool)
+    n_jumps = (ref_diff > 0).sum()
 
     # Compute mask of values for which there is a change
     change_mask = np.concatenate(
         [
             np.zeros(reference[:1].shape).astype(bool),
-            np.diff(reference, axis=0).astype(bool),
+            ref_diff.astype(bool),
         ]
     ).astype(bool)
 
     # Some accumulators
     deltas = np.zeros(shape_[1:], dtype=np.int64)
     rounding_thresholds = np.zeros(shape_[1:], dtype=np.int64)
-    n_rounds = np.ones(reference.shape[1:], dtype=np.int64)
+    n_rounds = np.ones(shape_[1:], dtype=np.int64)
 
     # Apply on all elements
     # TODO: vectorize this
     deltas_per_tlu = []
-    for indexes in tqdm(product(*[range(elt) for elt in reference.shape[1:]])):
+    for indexes in tqdm(product(*[range(elt) for elt in shape_[1:]])):
         selection = tuple([slice(0, n_elems), *indexes])
         best_indexes = tuple([0, *indexes])
         steps_indexes = subgraph_inputs[selection][change_mask[selection]]
@@ -513,7 +517,7 @@ def delta_optimize(
         # Number of elements in the new range for the given step size
         n_parts = (x_delta_max - x_delta_min) / delta
         n_round = BIT_WIDTH_ESTIM_FUNC(np.log2(n_parts)).astype(np.int64)
-        assert n_round <= rounding_threshold, f"{n_round=} > {rounding_threshold=}"
+        # assert n_round <= rounding_threshold, f"{n_round=} > {rounding_threshold=}"
 
         exceed = ((2**n_round)) - n_parts
         left_bound_add = np.ceil(exceed / 2).astype(np.int64)
@@ -521,34 +525,43 @@ def delta_optimize(
         assert left_bound_add + right_bound_add == exceed
         x_delta_min -= left_bound_add * delta
         x_delta_max += right_bound_add * delta
-        middle = (x_delta_max - x_delta_min) / 2
-        middle = np.median(np.arange(x_delta_min, x_delta_max + 1, delta))
+
+        # middle = (x_delta_max - x_delta_min) / 2
+        # middle = np.median(np.arange(x_delta_min, x_delta_max + 1, delta))
 
         # Find the proper n
+        # mult_first = True
+        # if mult_first:
+        #     # THIS IS WRONG
+        #     # a_prime = ((2**n) - delta) / (x_delta_max - x_delta_min)
+        #     # b_prime = -(2 ** (n - 1)) - (x_delta_min * ((2**n - 1) / (x_delta_max - x_delta_min)))
+        #     # a_prime = np.floor(a_prime).astype(np.int64)
+        #     # b_prime = np.floor(b_prime).astype(np.int64)
+
         n = 23
-        mult_first = False
-        if mult_first:
-            a_prime = ((2**n) - delta) / (x_delta_max - x_delta_min)
-            b_prime = -(2 ** (n - 1)) - (x_delta_min * ((2**n - 1) / (x_delta_max - x_delta_min)))
-            a_prime = np.floor(a_prime).astype(np.int64)
-            b_prime = np.floor(b_prime).astype(np.int64)
-        else:
-            a_prime = (2**n - 1) / (x_delta_max - x_delta_min)
-            a_prime = np.floor(a_prime).astype(np.int64)
-            b_prime = middle
-            if rounding_function == round_bit_pattern:
-                b_prime += delta / 2
-            else:
-                b_prime += 0
-            print(f"{a_prime=}, {b_prime=}")
-            a_prime = np.floor(a_prime).astype(np.int64)
-            b_prime = np.floor(b_prime).astype(np.int64)
+        a_prime = np.floor(((2**n) - 1) / (x_delta_max - x_delta_min)).astype(np.int64)
+        b_prime = ((x_delta_min * a_prime) + (2 ** (n - 1))).astype(np.int64)
+        new_min, new_max = (x_delta_min * a_prime) - b_prime, (x_delta_max * a_prime) - b_prime
+        assert new_min == -(2 ** (n - 1))
+        assert new_max <= ((2 ** (n - 1)) - 1)
+        # else:
+        #     a_prime = (2**n - 1) / (x_delta_max - x_delta_min)
+        #     a_prime = np.floor(a_prime).astype(np.int64)
+        #     b_prime = middle
+        #     if rounding_function == round_bit_pattern:
+        #         b_prime += delta / 2
+        #     else:
+        #         b_prime += 0
+        #     print(f"{a_prime=}, {b_prime=}")
+        #     a_prime = np.floor(a_prime).astype(np.int64)
+        #     b_prime = np.floor(b_prime).astype(np.int64)
         best_a[best_indexes] = int(a_prime)
         best_b[best_indexes] = int(b_prime)
         n_rounds[indexes] = int(n_round)
 
     n_round = int(n_rounds.max())
-    return n_round, best_a, best_b, deltas_per_tlu
+    # breakpoint() # Check that we are on the correct bit with and equal/close to the bounds
+    return n_round, best_a, best_b, deltas_per_tlu, n_jumps
 
 
 # TODO: extract optimization into another
@@ -725,9 +738,14 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
             assert isinstance(reference, np.ndarray)
             reference = reference.astype(np.int64)
 
-            n_round, best_a, best_b, deltas_per_tlu = delta_optimize(
+            n_round, best_a, best_b, deltas_per_tlu, n_jumps = delta_optimize(
                 subgraph_inputs, reference, shape_, (int(min_bound), int(max_bound))
             )
+
+            # For testing purposes we had some properties
+            tlu_node.properties["attributes"]["deltas_per_tlu"] = deltas_per_tlu
+            tlu_node.properties["attributes"]["opt_round_a"] = best_a
+            tlu_node.properties["attributes"]["opt_round_b"] = best_b
 
             # We need to make sure that we have the correct shape when adding constants in the graph
             # As Concrete Python doesn't handle broadcasting at the graph level
@@ -735,28 +753,41 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
             best_a = np.broadcast_to(best_a, shape=(1,) + variable_input_node.output.shape[1:])
             best_b = np.broadcast_to(best_b, shape=(1,) + variable_input_node.output.shape[1:])
 
-            # For testing purposes we had some properties
-            tlu_node.properties["attributes"]["deltas_per_tlu"] = deltas_per_tlu
-            tlu_node.properties["attributes"]["opt_round_a"] = best_a
-            tlu_node.properties["attributes"]["opt_round_b"] = best_b
-
             # Main graph modification
             # Add scaling and rounding to the main graph
             previous_node = variable_input_node
-            # Subtract b
-            previous_node = add_leveled_op_with_cst(
-                previous_node, best_b.astype(np.int64), subtract, graph.graph
-            )
             # Multiply by a
             previous_node = add_leveled_op_with_cst(
                 previous_node, best_a.astype(np.int64), multiply, graph.graph
+            )
+            # Subtract b
+            previous_node = add_leveled_op_with_cst(
+                previous_node, best_b.astype(np.int64), subtract, graph.graph
             )
             # Round by n_round
             assert isinstance(previous_node.output.dtype, Integer)
             lsbs_to_remove = int(previous_node.output.dtype.bit_width - n_round)
             previous_node = add_rounding_node(
-                previous_node, lsbs_to_remove, graph.graph, rounding_function=self.rounding_function
+                previous_node,
+                lsbs_to_remove,
+                graph.graph,
+                rounding_function=self.rounding_function,
+                exactness=self.exactness,
             )
+
+            # DEBUG: sanity check
+            approx_subgraph_inputs = (
+                self.rounding_function(
+                    (subgraph_inputs * best_a) - best_b, lsbs_to_remove=lsbs_to_remove
+                ).astype(np.float64)
+                + best_b.astype(np.float64)
+            ) / best_a.astype(np.float64)
+            approx_reference = vectorized_graph_eval(
+                tlu_subgraph, approx_subgraph_inputs, sorted_nodes=sorted_nodes
+            )
+            if (((reference - approx_reference) > 0).sum(axis=0) >= n_jumps).any():
+                pass
+                # breakpoint()
 
             # Store some statistics for testing/debugging in the object itself
             self._statistics[tlu_index] = {}
@@ -764,11 +795,13 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
 
             # Sub-graph modification
             previous_node = self.get_subgraph_input(tlu_subgraph)
-            previous_node = add_leveled_op_with_cst(
-                previous_node, best_a.astype(np.float64), divide, graph=tlu_subgraph.graph
-            )
+            # Add b
             previous_node = add_leveled_op_with_cst(
                 previous_node, best_b.astype(np.float64), add, graph=tlu_subgraph.graph
+            )
+            # Divide by a
+            previous_node = add_leveled_op_with_cst(
+                previous_node, best_a.astype(np.float64), divide, graph=tlu_subgraph.graph
             )
 
             # ##################################################

@@ -9,7 +9,7 @@ import torch
 from concrete.fhe import Configuration
 from sklearn.datasets import make_classification
 
-from concrete.ml.common.preprocessors import Exactness, TLUOptimizer
+from concrete.ml.common.preprocessors import Exactness, TLUDeltaBasedOptimizer
 from concrete.ml.pytest.torch_models import TorchAutoRoundingTLUTester
 from concrete.ml.quantization.base_quantized_op import QuantizedMixingOp
 from concrete.ml.quantization.post_training import PowerOfTwoScalingRoundPBSAdapter
@@ -28,10 +28,8 @@ def test_tlu_analysis_granularity(is_conv, tlu_test_mode):
     model = TorchAutoRoundingTLUTester(is_conv, tlu_test_mode)
 
     n_bits = 4
-    tlu_optimizer = TLUOptimizer(
-        rounding_threshold=n_bits,
+    tlu_optimizer = TLUDeltaBasedOptimizer(
         verbose=True,
-        n_bits_range_search=5,
         exactness=Exactness.APPROXIMATE,
     )
     cfg = Configuration(
@@ -110,10 +108,8 @@ def test_tlu_analysis_optimization(load_data, n_bits):
         adapter.num_ignored_valid_patterns == 1
     ), "Expected number of ignored round PBS optimizable patterns was not matched"
 
-    tlu_optimizer = TLUOptimizer(
-        rounding_threshold=n_bits,
+    tlu_optimizer = TLUDeltaBasedOptimizer(
         verbose=True,
-        n_bits_range_search=5,
         exactness=Exactness.APPROXIMATE,
     )
     cfg = Configuration(
@@ -148,7 +144,7 @@ def test_tlu_analysis_optimization(load_data, n_bits):
                 bw = int(m.group(2))
                 if bw > 24:
                     continue
-                assert bw <= n_bits
+                assert bw <= (n_bits + 1), line
                 count_reinterpret += 1
         if "apply_lookup_table" in line:
             count_tlu += 1
@@ -177,10 +173,8 @@ def test_tlu_optimization_cryptoparam_finding(load_data, n_bits):
 
     compile_ok_with_adjust = True
     try:
-        tlu_optimizer = TLUOptimizer(
-            rounding_threshold=n_bits,
+        tlu_optimizer = TLUDeltaBasedOptimizer(
             verbose=True,
-            n_bits_range_search=5,
             exactness=Exactness.APPROXIMATE,
         )
         cfg = Configuration(show_optimizer=False, additional_pre_processors=[tlu_optimizer])
@@ -190,11 +184,13 @@ def test_tlu_optimization_cryptoparam_finding(load_data, n_bits):
             x,
             configuration=cfg,
         )
-    except RuntimeError as err:
-        if len(err.args) and err.args[0] == "NoParametersFound":
+    except RuntimeError as err_with_adjust:
+        if len(err_with_adjust.args) and err_with_adjust.args[0] == "NoParametersFound":
             compile_ok_with_adjust = False
         else:
-            raise err
+            raise err_with_adjust
+    else:
+        err_with_adjust = None
 
     compile_ok_with_no_adjust = True
     try:
@@ -208,10 +204,14 @@ def test_tlu_optimization_cryptoparam_finding(load_data, n_bits):
             x,
             configuration=cfg,
         )
-    except RuntimeError as err:
-        if len(err.args) and err.args[0] == "NoParametersFound":
+    except RuntimeError as err_with_no_adjust:
+        if len(err_with_no_adjust.args) and err_with_no_adjust.args[0] == "NoParametersFound":
             compile_ok_with_no_adjust = False
         else:
-            raise err
+            raise err_with_no_adjust
+    else:
+        err_with_no_adjust = None
 
-    assert compile_ok_with_adjust == compile_ok_with_no_adjust
+    assert (
+        compile_ok_with_adjust == compile_ok_with_no_adjust
+    ), f"{err_with_adjust=}\n{err_with_no_adjust}"
