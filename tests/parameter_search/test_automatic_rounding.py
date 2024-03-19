@@ -1,22 +1,21 @@
-
 import os
+import re
 import warnings
 from pathlib import Path
-import re
 
 import numpy
 import pytest
 import torch
-from sklearn.datasets import make_classification
 from concrete.fhe import Configuration
+from sklearn.datasets import make_classification
 
+from concrete.ml.common.preprocessors import Exactness, TLUOptimizer
 from concrete.ml.pytest.torch_models import TorchAutoRoundingTLUTester
-from concrete.ml.common.preprocessors import TLUOptimizer, Exactness
-from concrete.ml.torch.compile import compile_torch_model
-from concrete.ml.sklearn import NeuralNetClassifier
-
 from concrete.ml.quantization.base_quantized_op import QuantizedMixingOp
 from concrete.ml.quantization.post_training import PowerOfTwoScalingRoundPBSAdapter
+from concrete.ml.sklearn import NeuralNetClassifier
+from concrete.ml.torch.compile import compile_torch_model
+
 
 @pytest.mark.parametrize("is_conv", [True, False])
 @pytest.mark.parametrize("tlu_test_mode", ["per_tensor", "per_cell", "per_neuron"])
@@ -30,17 +29,18 @@ def test_tlu_analysis_granularity(is_conv, tlu_test_mode):
 
     n_bits = 4
     tlu_optimizer = TLUOptimizer(
-        rounding_threshold=n_bits, 
-        verbose=True, n_bits_range_search=5, 
+        rounding_threshold=n_bits,
+        verbose=True,
+        n_bits_range_search=5,
         exactness=Exactness.APPROXIMATE,
     )
     cfg = Configuration(
-        verbose=True,
-        show_optimizer=False,
-        additional_pre_processors=[tlu_optimizer]
+        verbose=True, show_optimizer=False, additional_pre_processors=[tlu_optimizer]
     )
 
-    input_set = torch.FloatTensor(numpy.concatenate([numpy.random.uniform(size=model.input_shape) for _ in range(10)]))
+    input_set = torch.FloatTensor(
+        numpy.concatenate([numpy.random.uniform(size=model.input_shape) for _ in range(10)])
+    )
 
     # Compile the quantized model
     quantized_numpy_module = compile_torch_model(
@@ -49,31 +49,33 @@ def test_tlu_analysis_granularity(is_conv, tlu_test_mode):
         n_bits=n_bits,
         configuration=cfg,
     )
-    
+
     # Find optimized TLUs
     tlu_nodes = quantized_numpy_module.fhe_circuit.graph.query_nodes(
-        custom_filter=lambda node: node.converted_to_table_lookup and "opt_round_a" in node.properties["attributes"],
+        custom_filter=lambda node: node.converted_to_table_lookup
+        and "opt_round_a" in node.properties["attributes"],
         ordered=True,
     )
 
     # A single TLU should be present
-    assert(len(tlu_nodes) == 1)
+    assert len(tlu_nodes) == 1
 
     tlu_node = tlu_nodes[0]
     scales_tlu = tlu_node.properties["attributes"]["opt_round_a"]
     offsets_tlu = tlu_node.properties["attributes"]["opt_round_b"]
 
     if tlu_test_mode == "per_tensor":
-        assert(offsets_tlu.size == 1)
-        assert(scales_tlu.size == 1)
+        assert offsets_tlu.size == 1
+        assert scales_tlu.size == 1
     elif tlu_test_mode == "per_cell":
-        assert(offsets_tlu.size == model.input_shape[2] * model.input_shape[3])
-        assert(scales_tlu.size == model.input_shape[2] * model.input_shape[3])
+        assert offsets_tlu.size == model.input_shape[2] * model.input_shape[3]
+        assert scales_tlu.size == model.input_shape[2] * model.input_shape[3]
     elif tlu_test_mode == "per_neuron":
-        assert(offsets_tlu.size == model.n_neurons)
-        assert(scales_tlu.size == model.n_neurons)
+        assert offsets_tlu.size == model.n_neurons
+        assert scales_tlu.size == model.n_neurons
     else:
         assert False, "Invalid tlu granularity test mode"
+
 
 @pytest.mark.parametrize("n_bits", range(2, 6))
 def test_tlu_analysis_optimization(load_data, n_bits):
@@ -109,31 +111,27 @@ def test_tlu_analysis_optimization(load_data, n_bits):
     ), "Expected number of ignored round PBS optimizable patterns was not matched"
 
     tlu_optimizer = TLUOptimizer(
-        rounding_threshold=n_bits, 
-        verbose=True, n_bits_range_search=5, 
+        rounding_threshold=n_bits,
+        verbose=True,
+        n_bits_range_search=5,
         exactness=Exactness.APPROXIMATE,
     )
     cfg = Configuration(
-        verbose=True,
-        show_optimizer=False,
-        additional_pre_processors=[tlu_optimizer]
+        verbose=True, show_optimizer=False, additional_pre_processors=[tlu_optimizer]
     )
 
     # Compile the quantized model
-    model.compile(
-        x,
-        configuration=cfg,
-        verbose=True
-    )
-    
+    model.compile(x, configuration=cfg, verbose=True)
+
     # Find optimized TLUs
     tlu_nodes = model.quantized_module_.fhe_circuit.graph.query_nodes(
-        custom_filter=lambda node: node.converted_to_table_lookup and "opt_round_a" in node.properties["attributes"],
+        custom_filter=lambda node: node.converted_to_table_lookup
+        and "opt_round_a" in node.properties["attributes"],
         ordered=True,
     )
 
     # A single TLU should be present
-    assert(len(tlu_nodes) == 1)
+    assert len(tlu_nodes) == 1
 
     tlu_node = tlu_nodes[0]
     scales_tlu = tlu_node.properties["attributes"]["opt_round_a"]
@@ -144,13 +142,13 @@ def test_tlu_analysis_optimization(load_data, n_bits):
     for line in model.quantized_module_.fhe_circuit.mlir.split("\n"):
         if "reinterpret_precision" in line:
             regex = r"-> tensor<(\d+x)*\!FHE.[A-z]+<(\d+)"
-            
+
             matches = re.finditer(regex, line.strip())
             for _, m in enumerate(matches, start=1):
                 bw = int(m.group(2))
-                if bw > 24: 
+                if bw > 24:
                     continue
-                assert(bw <= n_bits)
+                assert bw <= n_bits
                 count_reinterpret += 1
         if "apply_lookup_table" in line:
             count_tlu += 1
@@ -159,6 +157,7 @@ def test_tlu_analysis_optimization(load_data, n_bits):
     assert count_tlu == 1, "This model should compile to an MLIR with a single PBS layer"
 
     pass
+
 
 @pytest.mark.parametrize("n_bits", range(4, 9))
 def test_tlu_optimization_cryptoparam_finding(load_data, n_bits):
@@ -179,15 +178,12 @@ def test_tlu_optimization_cryptoparam_finding(load_data, n_bits):
     compile_ok_with_adjust = True
     try:
         tlu_optimizer = TLUOptimizer(
-            rounding_threshold=n_bits, 
-            verbose=True, 
-            n_bits_range_search=5, 
+            rounding_threshold=n_bits,
+            verbose=True,
+            n_bits_range_search=5,
             exactness=Exactness.APPROXIMATE,
         )
-        cfg = Configuration(
-            show_optimizer=False,
-            additional_pre_processors=[tlu_optimizer]
-        )
+        cfg = Configuration(show_optimizer=False, additional_pre_processors=[tlu_optimizer])
 
         # Compile the quantized model
         model.compile(
@@ -218,5 +214,4 @@ def test_tlu_optimization_cryptoparam_finding(load_data, n_bits):
         else:
             raise err
 
-
-    assert(compile_ok_with_adjust == compile_ok_with_no_adjust)
+    assert compile_ok_with_adjust == compile_ok_with_no_adjust

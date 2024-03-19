@@ -4,13 +4,13 @@ from pathlib import Path
 import numpy as np
 import torch
 from concrete.fhe import Configuration
+from concrete.fhe.mlir.processors import AssignBitWidths
 from models import cnv_2w2a
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from trainer import accuracy, get_test_set, get_train_set
 
-from concrete.ml.common.preprocessors import TLUOptimizer, Exactness
-from concrete.fhe.mlir.processors import AssignBitWidths
+from concrete.ml.common.preprocessors import Exactness, TLUOptimizer
 from concrete.ml.torch.compile import compile_brevitas_qat_model
 
 CURRENT_DIR = Path(__file__).resolve().parent
@@ -106,14 +106,15 @@ def main(args):
 
     for rounding_threshold_bits in rounding_threshold_bits_list:
         tlu_optimizer = TLUOptimizer(
-            rounding_threshold=rounding_threshold_bits, 
-            verbose=True, n_bits_range_search=5, 
+            rounding_threshold=rounding_threshold_bits,
+            verbose=True,
+            n_bits_range_search=5,
             exactness=Exactness.APPROXIMATE,
         )
         cfg = Configuration(
             verbose=True,
             show_optimizer=args.show_optimizer,
-            additional_pre_processors=[tlu_optimizer]
+            additional_pre_processors=[tlu_optimizer],
         )
         print(f"Testing network with {rounding_threshold_bits} rounding bits")
 
