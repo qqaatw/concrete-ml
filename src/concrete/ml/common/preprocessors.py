@@ -407,6 +407,9 @@ def delta_optimize(
     bounds: Tuple[int, int],
     rounding_function=round_bit_pattern,
 ):
+    if rounding_function.__name__ != "round_bit_pattern":
+        raise ValueError()
+
     # TODO: support np.array bounds
     # TODO: implement np.array bounds in CP
     # Match the GCD of the steps k*2**n
@@ -559,7 +562,18 @@ def delta_optimize(
         best_b[best_indexes] = int(b_prime)
         n_rounds[indexes] = int(n_round)
 
+    # TODO: compute lsbs to remove based on bounds and best_a, best_b
+    # The issue is that removing this half will add 1-bit (i.e. if n=23 we'll be on 24 bits)
+    acc_bit_with = Integer.that_can_represent(
+        (np.array([x_min, x_max]) * best_a) - best_b
+    ).bit_width
     n_round = int(n_rounds.max())
+    lsbs_to_remove = int(acc_bit_with - n_round)
+    if lsbs_to_remove > 0:
+        half = 1 << lsbs_to_remove - 1
+        best_b += half
+    # TODO: This half should probably also be taken into account in the compuation above
+
     # breakpoint() # Check that we are on the correct bit with and equal/close to the bounds
     return n_round, best_a, best_b, deltas_per_tlu, n_jumps
 
@@ -629,7 +643,7 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
                 assert input_node is None, "More than one astype float node detected"
                 input_node = node
         if input_node is None:
-            raise ValueError("Couldn't detect astype float node")
+            raise ValueError(f"Couldn't detect input node in:\n{subgraph.format()}")
         return input_node
 
     @staticmethod
@@ -689,7 +703,7 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
         self.rounding_function = round_bit_pattern
         self.internal_bit_width_target = internal_bit_width_target
         # Store per PBS statistics
-        self._statistics: Dict[int, Dict[str, int]] = {}
+        self._statistics: Dict[int, Dict[str, Union[int, np.ndarray]]] = {}
 
     def apply(self, graph: Graph):
         tlu_nodes = graph.query_nodes(
@@ -739,7 +753,10 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
             reference = reference.astype(np.int64)
 
             n_round, best_a, best_b, deltas_per_tlu, n_jumps = delta_optimize(
-                subgraph_inputs, reference, shape_, (int(min_bound), int(max_bound))
+                subgraph_inputs,
+                reference,
+                shape_,
+                (int(min_bound), int(max_bound)),
             )
 
             # For testing purposes we had some properties
@@ -792,6 +809,9 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
             # Store some statistics for testing/debugging in the object itself
             self._statistics[tlu_index] = {}
             self._statistics[tlu_index]["msbs_to_keep"] = n_round
+            self._statistics[tlu_index]["lsbs_to_remove"] = lsbs_to_remove
+            self._statistics[tlu_index]["a"] = best_a
+            self._statistics[tlu_index]["b"] = best_b
 
             # Sub-graph modification
             previous_node = self.get_subgraph_input(tlu_subgraph)
