@@ -45,9 +45,9 @@ def test_tlu_optimizer(execution_number: int):
 
     # Step size function to optimize
     def step_function(x):
-        res = x - x
+        res = numpy.zeros_like(x, dtype=numpy.float64)
         for threshold in thresholds:
-            res = res + x >= float(threshold)
+            res = res + univariate(lambda x: numpy.where(x >= float(threshold), 1., 0.))(x)
         return res.astype(numpy.int64)
 
     def f(x):
@@ -134,22 +134,25 @@ def test_tlu_optimizer(execution_number: int):
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots()
-        ax.step(input_set, reference, label="reference", color="blue")
-        ax.step(input_set, approx_reference, label="approx reference", color="purple")
-        ax.step(input_set, simulated, label="optimized", color="red", linestyle=(0, (5, 5)))
+        ax.step(input_set, reference, label="reference", color="blue", alpha=.5)
+        ax.step(input_set, approx_reference, label="approx reference", color="purple", linestyle="dotted", alpha=.5)
+        ax.step(input_set, simulated, label="optimized", color="red", linestyle=(0, (5, 5)), alpha=.5)
         ax.step(
             input_set,
             simulated_no_optim_no_rounding,
             label="not optimized, not rounded",
             color="green",
-            linestyle=(0, (5, 5)),
+            linestyle=(0, (5, 5)), 
+            alpha=.5,
         )
+
         ax.step(
             input_set,
             simulated_no_optim_rounding,
             label="not optimized, rounded",
             color="yellow",
             linestyle=(0, (5, 5)),
+            alpha=.5,
         )
         ax.vlines(
             x=input_set[0],
@@ -158,6 +161,7 @@ def test_tlu_optimizer(execution_number: int):
             linestyle=(0, (1, 1)),
             color="grey",
             label="x_min",
+            alpha=.5,
         )
         ax.vlines(
             x=input_set[-1],
@@ -166,6 +170,7 @@ def test_tlu_optimizer(execution_number: int):
             linestyle=(0, (1, 1)),
             color="grey",
             label="x_max",
+            alpha=.5,
         )
         plt.legend()
         fig.savefig(f"debug_{execution_number}.png")
@@ -182,7 +187,8 @@ def test_tlu_optimizer(execution_number: int):
         raise Exception(
             f"TLU Optimizer is not exact: {not_equal.mean()=} = {not_equal.sum()}/{not_equal.size}\n"
             f"{tlu_optimizer._statistics=}"
-            f"{execution_number=}, {lsbs_to_remove=} {(reference == approx_reference).mean()=}\n"
-            f"{circuit.graph.format()}\n\n"
+            f"{execution_number=}, {lsbs_to_remove=} {(reference == approx_reference).mean()=}\n{'#'*20}"
+            f"{(approx_reference == simulated).mean()=}"
+            f"{circuit.graph.format()}\n{'#'*20}\n"
             f"{circuit_no_optim_no_rounding.graph.format()}"
         )
