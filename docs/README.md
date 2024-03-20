@@ -48,6 +48,7 @@ Our team of experts usually answers within 24 hours in working days.
 * [Feature request](https://github.com/zama-ai/concrete-ml/issues/new?assignees=\&labels=feature\&projects=\&template=feature\_request.md)
 * [Bug report](https://github.com/zama-ai/concrete-ml/issues/new?assignees=\&labels=bug\&projects=\&template=bug\_report.md)
 
+
 ***
 
-[Survey test link](https://zama-project.webflow.io/developer-survey)
+<a href="https://zama-project.webflow.io/developer-survey"><img src="https://github.com/zama-ai/concrete-ml/assets/157474013/0ed4193d-874a-428d-8095-1d4e8a21e5ae" alt="Feedback survey"></a>
