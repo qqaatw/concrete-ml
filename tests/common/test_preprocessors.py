@@ -2,7 +2,7 @@ from typing import List
 
 import numpy
 import pytest
-from concrete.fhe import Compiler, Configuration, Exactness, round_bit_pattern, univariate
+from concrete.fhe import Compiler, Configuration, Exactness, round_bit_pattern, univariate, DebugArtifacts
 
 from concrete.ml.common.preprocessors import (
     CycleDetector,
@@ -11,21 +11,11 @@ from concrete.ml.common.preprocessors import (
     TLUDeltaBasedOptimizer,
 )
 
-# def func(x):
-#     n_bits = 4
-#     x = x + 1
-#     x.astype(np.float64)
-#     x =  x + 2.4 / 3.3
-#     np.max(x, 0)
-#     x = np.rint(np.clip(x * 2.3 + 4.3), -2**n_bits, 2**n_bits).astype(np.float64)
-#     x = x - 3
-#     return x
-
 
 @pytest.mark.parametrize("execution_number", range(10))
 def test_tlu_optimizer(execution_number: int):
     curr_seed = numpy.random.randint(0, 2**32)
-    numpy.random.seed(curr_seed + execution_number)
+    numpy.random.seed(execution_number*100)
 
     # Create function
     n_bits_from = numpy.random.choice(range(2, 9))
@@ -57,29 +47,33 @@ def test_tlu_optimizer(execution_number: int):
     def step_function(x):
         res = numpy.zeros_like(x, dtype=numpy.float64)
         for threshold in thresholds:
-            res = res + (x >= float(threshold))
+            res = res + x >= float(threshold)
         return res.astype(numpy.int64)
 
     def f(x):
         return step_function(x.astype(numpy.float64))
 
     # Optim, Rounding
-    tlu_optimizer = TLUDeltaBasedOptimizer(verbose=False, exactness=Exactness.APPROXIMATE)
+    tlu_optimizer = TLUDeltaBasedOptimizer(verbose=False, exactness=Exactness.EXACT)
     cycle_detector = CycleDetector()
     additional_pre_processors: List[GraphProcessor] = [tlu_optimizer]
     additional_post_processors: List[GraphProcessor] = [cycle_detector]
     compilation_configuration = Configuration(
         additional_pre_processors=additional_pre_processors,
         additional_post_processors=additional_post_processors,
+        
     )
     compiler = Compiler(
         f,
         parameter_encryption_statuses={"x": "encrypted"},
     )
+    artifacts = DebugArtifacts(f".debug_artifacts_{execution_number}")
     circuit = compiler.compile(
         input_set_as_list_of_array,
         configuration=compilation_configuration,
+        artifacts=artifacts,
     )
+    artifacts.export()
 
     if tlu_optimizer._statistics:
         rounding_threshold = tlu_optimizer._statistics[0]["msbs_to_keep"]
@@ -187,6 +181,7 @@ def test_tlu_optimizer(execution_number: int):
     if not_equal.sum() > len(thresholds):
         raise Exception(
             f"TLU Optimizer is not exact: {not_equal.mean()=} = {not_equal.sum()}/{not_equal.size}\n"
+            f"{tlu_optimizer._statistics=}"
             f"{execution_number=}, {lsbs_to_remove=} {(reference == approx_reference).mean()=}\n"
             f"{circuit.graph.format()}\n\n"
             f"{circuit_no_optim_no_rounding.graph.format()}"
