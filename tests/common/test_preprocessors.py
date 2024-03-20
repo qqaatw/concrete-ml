@@ -45,7 +45,7 @@ def test_tlu_optimizer(execution_number: int):
 
     # Step size function to optimize
     def step_function(x):
-        res = numpy.zeros_like(x, dtype=numpy.float64)
+        res = x - x
         for threshold in thresholds:
             res = res + x >= float(threshold)
         return res.astype(numpy.int64)

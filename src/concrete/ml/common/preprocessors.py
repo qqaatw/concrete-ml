@@ -571,7 +571,7 @@ def delta_optimize(
     lsbs_to_remove = int(acc_bit_with - n_round)
     if lsbs_to_remove > 0:
         half = 1 << lsbs_to_remove - 1
-        best_b -= half
+        best_b += half
     # TODO: This half should probably also be taken into account in the compuation above
 
     # breakpoint() # Check that we are on the correct bit with and equal/close to the bounds
