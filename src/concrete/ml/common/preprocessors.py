@@ -447,10 +447,11 @@ def delta_optimize(
         if len(steps_indexes) == 0:
             print("Constant TLU")
             # The function is constant so nothing to do here
+            # We can just round to one
             n_round = 1
             n_rounds[indexes] = int(n_round)
-            best_b[best_indexes] = 0
-            best_a[best_indexes] = 1
+            best_b[best_indexes] = int(0)
+            best_a[best_indexes] = int(1)
             continue
 
         th_0 = steps_indexes[0]  # First x such f(x-1) != f(x)
@@ -463,7 +464,7 @@ def delta_optimize(
             n_round = 1
             n_rounds[indexes] = int(n_round)
             best_b[best_indexes] = int(th_0)
-            best_a[best_indexes] = 1
+            best_a[best_indexes] = int(1)
             # Map th_0 to 0 then it's just about extracting the sign
             continue
 
@@ -573,6 +574,7 @@ def delta_optimize(
         half = 1 << lsbs_to_remove - 1
         best_b += half
     # TODO: This half should probably also be taken into account in the compuation above
+    # Because it will add a bit to the accumulator
 
     # breakpoint() # Check that we are on the correct bit with and equal/close to the bounds
     return n_round, best_a, best_b, deltas_per_tlu, n_jumps
@@ -583,6 +585,21 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
     """
     TLUDeltaBasedOptimizer graph processor, to add approximate rounding and scaling before/in TLUs if desired.
     """
+    def __init__(
+        self,
+        verbose: bool = True,
+        exactness: Exactness = Exactness.APPROXIMATE,
+        overflow_protection: bool = True,
+        internal_bit_width_target=23,
+    ):
+        self.verbose = verbose
+        self.exactness = exactness
+        self.overflow_protection = overflow_protection
+        self.rounding_function = round_bit_pattern
+        self.internal_bit_width_target = internal_bit_width_target
+        # Store per PBS statistics
+        self._statistics: Dict[int, Dict[str, Union[int, np.ndarray]]] = {}
+
 
     @staticmethod
     def extract_tlu_input_bounds(variable_input_node):
@@ -643,6 +660,15 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
                 assert input_node is None, "More than one astype float node detected"
                 input_node = node
         if input_node is None:
+            # Try falling back to the first node if it's astype
+            # TODO: figure out how to insert right in the begining of the graph
+            for first_node in nx.topological_sort(subgraph.graph):
+                # Only constants allowed
+                if "constant" in first_node.properties:
+                    continue
+                elif first_node.properties["name"] == "astype":
+                    return first_node
+            breakpoint()
             raise ValueError(f"Couldn't detect input node in:\n{subgraph.format()}")
         return input_node
 
@@ -689,21 +715,6 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
             ]
 
         return subgraph_inputs
-
-    def __init__(
-        self,
-        verbose: bool = True,
-        exactness: Exactness = Exactness.APPROXIMATE,
-        overflow_protection: bool = False,
-        internal_bit_width_target=23,
-    ):
-        self.verbose = verbose
-        self.exactness = exactness
-        self.overflow_protection = overflow_protection
-        self.rounding_function = round_bit_pattern
-        self.internal_bit_width_target = internal_bit_width_target
-        # Store per PBS statistics
-        self._statistics: Dict[int, Dict[str, Union[int, np.ndarray]]] = {}
 
     def apply(self, graph: Graph):
         tlu_nodes = graph.query_nodes(
@@ -790,6 +801,7 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
                 graph.graph,
                 rounding_function=self.rounding_function,
                 exactness=self.exactness,
+                overflow_protection=self.overflow_protection,
             )
 
             # DEBUG: sanity check

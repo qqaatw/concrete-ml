@@ -12,13 +12,13 @@ from concrete.ml.common.preprocessors import (
 )
 
 
-@pytest.mark.parametrize("execution_number", range(10))
+@pytest.mark.parametrize("execution_number", range(0, 10))
 def test_tlu_optimizer(execution_number: int):
     curr_seed = numpy.random.randint(0, 2**32)
-    numpy.random.seed(execution_number*100)
+    numpy.random.seed(curr_seed + execution_number)
 
     # Create function
-    n_bits_from = numpy.random.choice(range(2, 9))
+    n_bits_from = numpy.random.choice(range(2, 10))
     # 2**n range
     x_min, x_max = -(2**n_bits_from), (2**n_bits_from) - 1
 
@@ -41,16 +41,17 @@ def test_tlu_optimizer(execution_number: int):
 
     # Function definition bounds
     input_set = numpy.arange(x_min, x_max + 1, 1, dtype=numpy.int64)
-    input_set_as_list_of_array = [numpy.array([elt]) for elt in input_set]
+    input_set_as_list_of_array = [numpy.array([elt], dtype=numpy.int64) for elt in input_set]
 
     # Step size function to optimize
-    def step_function(x):
-        res = numpy.zeros_like(x, dtype=numpy.float64)
-        for threshold in thresholds:
-            res = res + univariate(lambda x: numpy.where(x >= float(threshold), 1., 0.))(x)
-        return res.astype(numpy.int64)
+    def util(x):
+        return sum([numpy.where(x >= float(threshold), 1., 0.) for threshold in thresholds])
 
-    def f(x):
+    def step_function(x):
+        # res = numpy.zeros_like(x, dtype=numpy.float64)
+        return univariate(util)(x).astype(numpy.int64)
+
+    def f(x): # (1,)
         return step_function(x.astype(numpy.float64))
 
     # Optim, Rounding
@@ -110,6 +111,7 @@ def test_tlu_optimizer(execution_number: int):
 
     reference = f(input_set)
 
+    # Transform and round
     transformed_input_set = input_set.copy()
     if tlu_optimizer._statistics:
         transformed_input_set = transformed_input_set * tlu_optimizer._statistics[0]["a"]
@@ -119,6 +121,7 @@ def test_tlu_optimizer(execution_number: int):
             tlu_optimizer.rounding_function(transformed_input_set, lsbs_to_remove=lsbs_to_remove)
         transformed_input_set = transformed_input_set + tlu_optimizer._statistics[0]["b"]
         transformed_input_set = transformed_input_set / tlu_optimizer._statistics[0]["a"]
+    # Apply function
     approx_reference = f(transformed_input_set)
 
     simulated = numpy.array([circuit.simulate(numpy.array([elt])) for elt in input_set])[..., 0]
@@ -129,13 +132,24 @@ def test_tlu_optimizer(execution_number: int):
         [circuit_no_optim_rounding.simulate(numpy.array([elt])) for elt in input_set]
     )[..., 0]
 
+    graph_res = numpy.array([circuit.graph(numpy.array([elt])) for elt in input_set])[..., 0]
+    graph_res_no_optim_no_rounding = numpy.array(
+        [circuit_no_optim_no_rounding.graph(numpy.array([elt])) for elt in input_set]
+    )[..., 0]
+    graph_res_no_optim_rounding = numpy.array(
+        [circuit_no_optim_rounding.graph(numpy.array([elt])) for elt in input_set]
+    )[..., 0]
+
     debug = True
     if debug:
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots()
+        # Numpy calls
         ax.step(input_set, reference, label="reference", color="blue", alpha=.5)
         ax.step(input_set, approx_reference, label="approx reference", color="purple", linestyle="dotted", alpha=.5)
+
+        # Simulation
         ax.step(input_set, simulated, label="optimized", color="red", linestyle=(0, (5, 5)), alpha=.5)
         ax.step(
             input_set,
@@ -145,7 +159,6 @@ def test_tlu_optimizer(execution_number: int):
             linestyle=(0, (5, 5)), 
             alpha=.5,
         )
-
         ax.step(
             input_set,
             simulated_no_optim_rounding,
@@ -154,6 +167,29 @@ def test_tlu_optimizer(execution_number: int):
             linestyle=(0, (5, 5)),
             alpha=.5,
         )
+
+        # Graph call
+        ax.step(input_set, graph_res, label="optimized (graph)", color="red", linestyle=(0, (5, 5)), alpha=.5)
+        ax.step(
+            input_set,
+            graph_res_no_optim_no_rounding,
+            label="not optimized, not rounded (graph)",
+            color="green",
+            linestyle=(0, (5, 5)), 
+            alpha=.5,
+        )
+
+        ax.step(
+            input_set,
+            graph_res_no_optim_rounding,
+            label="not optimized, rounded (graph)",
+            color="yellow",
+            linestyle=(0, (5, 5)),
+            alpha=.5,
+        )
+
+        # Some lines for reference
+        # x_min
         ax.vlines(
             x=input_set[0],
             ymin=reference.min(),
@@ -163,6 +199,7 @@ def test_tlu_optimizer(execution_number: int):
             label="x_min",
             alpha=.5,
         )
+        # x_max
         ax.vlines(
             x=input_set[-1],
             ymin=reference.min(),
@@ -172,6 +209,8 @@ def test_tlu_optimizer(execution_number: int):
             label="x_max",
             alpha=.5,
         )
+
+        # Dump figure
         plt.legend()
         fig.savefig(f"debug_{execution_number}.png")
         plt.close(fig)
@@ -183,12 +222,13 @@ def test_tlu_optimizer(execution_number: int):
             file.write(circuit.mlir)
 
     not_equal = reference != simulated
-    if not_equal.sum() > len(thresholds):
+    if (not_equal.sum() > len(thresholds)) or (approx_reference != simulated).any():
         raise Exception(
             f"TLU Optimizer is not exact: {not_equal.mean()=} = {not_equal.sum()}/{not_equal.size}\n"
-            f"{tlu_optimizer._statistics=}"
-            f"{execution_number=}, {lsbs_to_remove=} {(reference == approx_reference).mean()=}\n{'#'*20}"
-            f"{(approx_reference == simulated).mean()=}"
+            f"{tlu_optimizer._statistics=}\n"
+            f"{execution_number=}, {lsbs_to_remove=} {(reference == approx_reference).mean()=}\n{'#'*20}\n"
+            f"{(simulated == graph_res).mean()=}, {(simulated_no_optim_no_rounding == graph_res_no_optim_no_rounding).mean()=}, {(simulated_no_optim_rounding == graph_res_no_optim_rounding).mean()=}\n"
+            f"{(approx_reference == simulated).mean()=}\n"
             f"{circuit.graph.format()}\n{'#'*20}\n"
-            f"{circuit_no_optim_no_rounding.graph.format()}"
+            f"{circuit_no_optim_no_rounding.graph.format()}\n"
         )
