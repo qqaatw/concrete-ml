@@ -444,6 +444,8 @@ def delta_optimize(
         best_indexes = tuple([0, *indexes])
         steps_indexes = subgraph_inputs[selection][change_mask[selection]]
 
+        print(f"{steps_indexes=}")
+
         if len(steps_indexes) == 0:
             print("Constant TLU")
             # The function is constant so nothing to do here
@@ -456,6 +458,8 @@ def delta_optimize(
 
         th_0 = steps_indexes[0]  # First x such f(x-1) != f(x)
         delta_axis = np.diff(steps_indexes, axis=0)  # all step sizes
+        print(f"{th_0=}")
+        print(f"{delta_axis=}")
 
         if len(delta_axis) == 0:
             # Single jump
@@ -472,6 +476,7 @@ def delta_optimize(
         deltas_per_tlu.append(np.unique(delta_axis))
         delta = np.bincount(delta_axis).argmax()
         deltas[indexes] = delta
+
 
         BIT_WIDTH_ESTIM_FUNC = np.ceil
 
@@ -508,8 +513,11 @@ def delta_optimize(
         # Arbitrarily high number
         n_bits_after = 23
 
-        b_prime = ((x_delta_max - x_delta_min) / 2) + (delta / 2) + 1
-        a_prime = (2 ** (n_bits_after)) / (delta * ((2**n_bits_before - 1)))
+        # b_prime = ((x_delta_max - x_delta_min) / 2) + (delta / 2) + 1
+        # a_prime = (2 ** (n_bits_after)) / (delta * ((2**n_bits_before - 1)))
+
+        a_prime = (2 ** (n_bits_after) - 1) / (x_delta_max - x_delta_min)
+        b_prime = (x_delta_min * a_prime) + (2**(n_bits_after - 1))
 
         # Notebook implementation
         n_round = int(np.around(np.log2((x_max - x_min) / delta)))
@@ -530,35 +538,13 @@ def delta_optimize(
         x_delta_min -= left_bound_add * delta
         x_delta_max += right_bound_add * delta
 
-        # middle = (x_delta_max - x_delta_min) / 2
-        # middle = np.median(np.arange(x_delta_min, x_delta_max + 1, delta))
-
-        # Find the proper n
-        # mult_first = True
-        # if mult_first:
-        #     # THIS IS WRONG
-        #     # a_prime = ((2**n) - delta) / (x_delta_max - x_delta_min)
-        #     # b_prime = -(2 ** (n - 1)) - (x_delta_min * ((2**n - 1) / (x_delta_max - x_delta_min)))
-        #     # a_prime = np.floor(a_prime).astype(np.int64)
-        #     # b_prime = np.floor(b_prime).astype(np.int64)
-
         n = 23
         a_prime = np.floor(((2**n) - 1) / (x_delta_max - x_delta_min)).astype(np.int64)
         b_prime = ((x_delta_min * a_prime) + (2 ** (n - 1))).astype(np.int64)
         new_min, new_max = (x_delta_min * a_prime) - b_prime, (x_delta_max * a_prime) - b_prime
         assert new_min == -(2 ** (n - 1))
         assert new_max <= ((2 ** (n - 1)) - 1)
-        # else:
-        #     a_prime = (2**n - 1) / (x_delta_max - x_delta_min)
-        #     a_prime = np.floor(a_prime).astype(np.int64)
-        #     b_prime = middle
-        #     if rounding_function == round_bit_pattern:
-        #         b_prime += delta / 2
-        #     else:
-        #         b_prime += 0
-        #     print(f"{a_prime=}, {b_prime=}")
-        #     a_prime = np.floor(a_prime).astype(np.int64)
-        #     b_prime = np.floor(b_prime).astype(np.int64)
+
         best_a[best_indexes] = int(a_prime)
         best_b[best_indexes] = int(b_prime)
         n_rounds[indexes] = int(n_round)
@@ -570,10 +556,12 @@ def delta_optimize(
     ).bit_width
     n_round = int(n_rounds.max())
     lsbs_to_remove = int(acc_bit_with - n_round)
-    # DEBUG
+
+    # DEBUG: HALF TRICK
     # if lsbs_to_remove > 0:
-    #     half = 1 << lsbs_to_remove - 1
+    #     half = 1 << lsbs_to_remove
     #     best_b += half
+
     # TODO: This half should probably also be taken into account in the compuation above
     # Because it will add a bit to the accumulator
 
