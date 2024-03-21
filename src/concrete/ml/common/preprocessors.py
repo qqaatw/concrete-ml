@@ -570,9 +570,10 @@ def delta_optimize(
     ).bit_width
     n_round = int(n_rounds.max())
     lsbs_to_remove = int(acc_bit_with - n_round)
-    if lsbs_to_remove > 0:
-        half = 1 << lsbs_to_remove - 1
-        best_b += half
+    # DEBUG
+    # if lsbs_to_remove > 0:
+    #     half = 1 << lsbs_to_remove - 1
+    #     best_b += half
     # TODO: This half should probably also be taken into account in the compuation above
     # Because it will add a bit to the accumulator
 
