@@ -398,6 +398,7 @@ def add_leveled_op_with_cst(
 
     return new_node
 
+# Implement a gradient based way to optimize alpha and beta
 
 def delta_optimize(
     subgraph_inputs: np.ndarray,
@@ -449,13 +450,14 @@ def delta_optimize(
             print("Constant TLU")
             # The function is constant so nothing to do here
             # We can just round to one
+            # Basically do nothing
             n_round = 1
             n_rounds[indexes] = int(n_round)
             best_b[best_indexes] = int(0)
             best_a[best_indexes] = int(1)
             continue
 
-        th_0 = steps_indexes[0]  # First x such f(x-1) != f(x)
+        th_0 = steps_indexes[len(steps_indexes)//2]  # First x such f(x-1) != f(x)
         delta_axis = np.diff(steps_indexes, axis=0)  # all step sizes
 
         if len(delta_axis) == 0:
@@ -464,7 +466,8 @@ def delta_optimize(
             print(f"Single jump: {x_min=}, {th_0}, {x_max=}")
             n_round = 1
             n_rounds[indexes] = int(n_round)
-            best_b[best_indexes] = int(th_0)
+            offset = 2**(Integer.that_can_represent([x_min, x_max]).bit_width)
+            best_b[best_indexes] = int(th_0) + offset
             best_a[best_indexes] = int(1)
             # Map th_0 to 0 then it's just about extracting the sign
             continue
@@ -474,18 +477,15 @@ def delta_optimize(
         delta = np.bincount(delta_axis).argmax()
         deltas[indexes] = delta
 
-        if delta <= 1:
-            n_round = 1
-            n_rounds[indexes] = int(n_round)
-            best_b[best_indexes] = int(th_0)
-            best_a[best_indexes] = 1
-            # Map th_0 to 0 then no rounding is needed
-            continue
-
         BIT_WIDTH_ESTIM_FUNC = np.ceil
 
         rounding_threshold = BIT_WIDTH_ESTIM_FUNC(np.log2((x_max - x_min) / delta)).astype(np.int64)
         rounding_thresholds[indexes] = rounding_threshold
+
+        # offset th_0 by half of delta -> this trick won't work for single jumps
+        # th_0 should be chosen based on the delta choice
+        th_0 = steps_indexes[0] + np.rint(delta / 2)  # First x such f(x-1) != f(x)
+        print(f"updated {th_0=}")
 
         # Find new limits such that we have smallest bounds that include actual bounds and
         # can be expressed as th_0 + (k * delta)
@@ -531,7 +531,7 @@ def delta_optimize(
         x_delta_max = th_0 + ((x_max - th_0) // delta) * delta + bool(x_max % delta) * delta
 
         # Number of elements in the new range for the given step size
-        n_parts = (x_delta_max - x_delta_min) / delta
+        n_parts = ((x_delta_max - x_delta_min) / delta)
         n_round = BIT_WIDTH_ESTIM_FUNC(np.log2(n_parts)).astype(np.int64)
         # assert n_round <= rounding_threshold, f"{n_round=} > {rounding_threshold=}"
 
@@ -563,7 +563,7 @@ def delta_optimize(
 
     # DEBUG: HALF TRICK
     # if lsbs_to_remove > 0:
-    #     half = 1 << lsbs_to_remove
+    #     half = 1 << (lsbs_to_remove - 1)
     #     best_b += half
 
     # TODO: This half should probably also be taken into account in the compuation above
