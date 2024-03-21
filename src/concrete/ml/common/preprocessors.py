@@ -215,8 +215,7 @@ def vectorized_graph_eval_all(graph, *inputs, sorted_nodes: Optional[List] = Non
 
     return node_results, node_inputs
 
-
-def merge_tlu_constant_shapes(constant_shapes):
+def merge_tlu_constant_shapes(constant_shapes, expected_shape):
     # For each axis take the max value for the constant
     if constant_shapes:
         shape_ = tuple(
@@ -458,8 +457,6 @@ def delta_optimize(
 
         th_0 = steps_indexes[0]  # First x such f(x-1) != f(x)
         delta_axis = np.diff(steps_indexes, axis=0)  # all step sizes
-        print(f"{th_0=}")
-        print(f"{delta_axis=}")
 
         if len(delta_axis) == 0:
             # Single jump
@@ -477,6 +474,13 @@ def delta_optimize(
         delta = np.bincount(delta_axis).argmax()
         deltas[indexes] = delta
 
+        if delta <= 1:
+            n_round = 1
+            n_rounds[indexes] = int(n_round)
+            best_b[best_indexes] = int(th_0)
+            best_a[best_indexes] = 1
+            # Map th_0 to 0 then no rounding is needed
+            continue
 
         BIT_WIDTH_ESTIM_FUNC = np.ceil
 
@@ -616,9 +620,9 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
         return min_bound, max_bound
 
     @staticmethod
-    def compute_tlu_output_shapes(tlu_subgraph: Graph):
-        constant_shapes: List[Tuple[int, ...]] = list()
-        orig_constant_shapes: List[Tuple[int, ...]] = list()
+    def compute_tlu_output_shapes(tlu_subgraph, expected_shape):
+        constant_shapes = list()
+        orig_constant_shapes = list()
         for elt in tlu_subgraph.graph.nodes:
             assert isinstance(elt, Node)
             if isinstance(elt.evaluator, ConstantEvaluator):
@@ -634,10 +638,10 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
                     constant_shapes.append(tuple(constant_shape))
 
         # This shape includes constant axes folding and only reduces broadcasted axes
-        shape_, reduce_axes = merge_tlu_constant_shapes(constant_shapes)
+        shape_, reduce_axes = merge_tlu_constant_shapes(constant_shapes, expected_shape)
 
         # This shape excludes constant axes
-        orig_shape_, _ = merge_tlu_constant_shapes(orig_constant_shapes)
+        orig_shape_, _ = merge_tlu_constant_shapes(orig_constant_shapes, expected_shape)
 
         return shape_, reduce_axes, orig_shape_
 
@@ -737,7 +741,7 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
             # Create input with proper shape on the bounds for optimization
             expected_shape = variable_input_node.output.shape
 
-            shape_, reduce_axes, orig_shape_ = self.compute_tlu_output_shapes(tlu_subgraph)
+            shape_, reduce_axes, orig_shape_ = self.compute_tlu_output_shapes(tlu_subgraph, expected_shape)
 
             # Create an input which the full input range
             subgraph_inputs = self.make_subgraph_input_tensor(
@@ -763,6 +767,9 @@ class TLUDeltaBasedOptimizer(GraphProcessor):
             tlu_node.properties["attributes"]["deltas_per_tlu"] = deltas_per_tlu
             tlu_node.properties["attributes"]["opt_round_a"] = best_a
             tlu_node.properties["attributes"]["opt_round_b"] = best_b
+
+            if all([np.all(deltas == 1) for deltas in deltas_per_tlu]):
+                continue
 
             # We need to make sure that we have the correct shape when adding constants in the graph
             # As Concrete Python doesn't handle broadcasting at the graph level

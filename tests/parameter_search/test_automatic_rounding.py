@@ -11,11 +11,16 @@ from sklearn.datasets import make_classification
 
 from concrete.ml.common.preprocessors import Exactness, TLUDeltaBasedOptimizer
 from concrete.ml.pytest.torch_models import TorchAutoRoundingTLUTester
+from concrete.ml.torch.compile import compile_torch_model, compile_brevitas_qat_model
+from concrete.ml.sklearn import NeuralNetClassifier
+
 from concrete.ml.quantization.base_quantized_op import QuantizedMixingOp
 from concrete.ml.quantization.post_training import PowerOfTwoScalingRoundPBSAdapter
 from concrete.ml.sklearn import NeuralNetClassifier
 from concrete.ml.torch.compile import compile_torch_model
 
+
+from concrete.ml.pytest.utils import train_brevitas_network_tinymnist
 
 @pytest.mark.parametrize("is_conv", [True, False])
 @pytest.mark.parametrize("tlu_test_mode", ["per_tensor", "per_cell", "per_neuron"])
@@ -215,3 +220,25 @@ def test_tlu_optimization_cryptoparam_finding(load_data, n_bits):
     assert (
         compile_ok_with_adjust == compile_ok_with_no_adjust
     ), f"{err_with_adjust=}\n{err_with_no_adjust}"
+
+@pytest.mark.parametrize("n_bits", range(2, 6))
+def test_automatic_rounding_cnn(n_bits):
+    power_of_two = n_bits % 2 == 1 # test some models with power of two scaling
+    net, x_all, _ = train_brevitas_network_tinymnist(True, n_bits, True, False, power_of_two)
+
+    tlu_optimizer = TLUDeltaBasedOptimizer(
+        verbose=True, 
+        exactness=Exactness.APPROXIMATE,
+    )
+    cfg = Configuration(
+        show_optimizer=False,
+        additional_pre_processors=[tlu_optimizer]
+    )
+
+    # Compile the quantized model
+    qmodel = compile_brevitas_qat_model(net,
+        x_all,
+        configuration=cfg,
+    )
+
+    print(qmodel.fhe_circuit.mlir)
