@@ -53,3 +53,10 @@ Our team of experts usually answers within 24 hours in working days.
 [![Feedback survey](https://github.com/zama-ai/concrete-ml/assets/157474013/0ed4193d-874a-428d-8095-1d4e8a21e5ae)](https://zama-project.webflow.io/developer-survey)
 
 <figure><img src=".gitbook/assets/feedback light.png" alt=""><figcaption></figcaption></figure>
+
+<figure>
+    <a href="https://zama-project.webflow.io/developer-survey">
+        <img src=".gitbook/assets/feedback light.png" alt="Feedback Light">
+    </a>
+    <figcaption></figcaption>
+</figure>
