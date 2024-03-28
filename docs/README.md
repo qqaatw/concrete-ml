@@ -2,7 +2,11 @@
 description: >-
   Concrete ML is an open-source, privacy-preserving, machine learning framework
   based on Fully Homomorphic Encryption (FHE).
+coverY: 0
 layout:
+  cover:
+    visible: true
+    size: full
   title:
     visible: true
   description:
@@ -27,7 +31,7 @@ Learn the basics of Concrete ML, set it up, and make it run with ease.
 
 Start building with Concrete ML by exploring its core features, following deployment guides, and diving into user-friendly tutorials step by step.
 
-<table data-view="cards"><thead><tr><th align="center"></th><th></th><th></th><th></th><th data-hidden data-card-target data-type="content-ref"></th><th data-hidden data-card-cover data-type="files"></th></tr></thead><tbody><tr><td align="center"><strong>Fundamentals</strong><br></br></td><td>Explore core features of Concrete ML with and code examples.<br></br></td><td></td><td><ul><li><a href="broken-reference/">Build-in models</a></li><li><a href="broken-reference/">Deep learning</a></li></ul></td><td></td><td><a href=".gitbook/assets/orange1.png">orange1.png</a></td></tr><tr><td align="center"><strong>Guides</strong></td><td>Discover essential deployment guides to streamline your projects.</td><td></td><td><ul><li><a href="guides/prediction_with_fhe.md">Prediction with FHE</a></li><li><a href="guides/hybrid-models.md">Hybrid models</a></li><li><a href="guides/client_server.md">Production deployment</a></li><li><a href="guides/serialization.md">Serialization</a></li></ul></td><td><a href="broken-reference/">broken-reference</a></td><td><a href=".gitbook/assets/orange2.png">orange2.png</a></td></tr><tr><td align="center"><strong>Tutorials</strong></td><td>Follow step-by-step guides to build use case examples with Concrete ML.</td><td></td><td><ul><li><a href="tutorials/showcase.md#start-here">Start here</a></li><li><a href="tutorials/showcase.md#go-further">Go further</a></li></ul></td><td><a href="broken-reference/">broken-reference</a></td><td><a href=".gitbook/assets/orange3.png">orange3.png</a></td></tr></tbody></table>
+<table data-view="cards"><thead><tr><th align="center"></th><th></th><th></th><th></th><th data-hidden data-card-target data-type="content-ref"></th><th data-hidden data-card-cover data-type="files"></th></tr></thead><tbody><tr><td align="center"><strong>Fundamentals</strong><br><br></td><td>Explore core features of Concrete ML with and code examples.<br><br></td><td></td><td><ul><li><a href="broken-reference/">Build-in models</a></li><li><a href="broken-reference/">Deep learning</a></li></ul></td><td></td><td><a href=".gitbook/assets/orange1.png">orange1.png</a></td></tr><tr><td align="center"><strong>Guides</strong></td><td>Discover essential deployment guides to streamline your projects.</td><td></td><td><ul><li><a href="guides/prediction_with_fhe.md">Prediction with FHE</a></li><li><a href="guides/hybrid-models.md">Hybrid models</a></li><li><a href="guides/client_server.md">Production deployment</a></li><li><a href="guides/serialization.md">Serialization</a></li></ul></td><td><a href="broken-reference/">broken-reference</a></td><td><a href=".gitbook/assets/orange2.png">orange2.png</a></td></tr><tr><td align="center"><strong>Tutorials</strong></td><td>Follow step-by-step guides to build use case examples with Concrete ML.</td><td></td><td><ul><li><a href="tutorials/showcase.md#start-here">Start here</a></li><li><a href="tutorials/showcase.md#go-further">Go further</a></li></ul></td><td><a href="broken-reference/">broken-reference</a></td><td><a href=".gitbook/assets/orange3.png">orange3.png</a></td></tr></tbody></table>
 
 ### References & Explanations
 
