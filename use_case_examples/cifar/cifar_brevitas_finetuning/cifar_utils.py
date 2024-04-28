@@ -435,6 +435,10 @@ def train(
 
     print("Save in:", f"{dir}/{param['dataset_name']}_{param['training']}_state_dict.pt")
 
+    torch.save(
+        model.state_dict(), f"{dir}/{param['dataset_name']}_{param['training']}_state_dict.pt"
+    )
+    import pickle as pkl
     with open(f"{dir}/{param['dataset_name']}_history.pkl", "wb") as f:
         pkl.dump(param, f)
 
