@@ -93,5 +93,8 @@ class LogisticRegressionTraining(torch.nn.Module):
         # Should we clip the parameters to the min-max values?
         # FIXME: https://github.com/zama-ai/concrete-ml-internal/issues/4206
 
+        weights /= 1.0
+        bias /= 1.0
+        
         # (1, n_features, n_targets), (1, n_targets, 1)
         return weights, bias
