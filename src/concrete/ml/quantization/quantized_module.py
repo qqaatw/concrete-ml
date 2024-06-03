@@ -752,7 +752,7 @@ class QuantizedModule:
             single_precision=False,
             fhe_simulation=False,
             fhe_execution=True,
-            compress_input_ciphertexts=enable_input_compression,
+            # compress_input_ciphertexts=enable_input_compression,
         )
 
         self._is_compiled = True

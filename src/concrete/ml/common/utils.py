@@ -10,7 +10,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 import numpy
 import onnx
 import torch
-from concrete.fhe import Exactness
+
+# from concrete.fhe import Exactness
 from concrete.fhe.dtypes import Integer
 from sklearn.base import is_classifier, is_regressor
 
@@ -631,40 +632,41 @@ def process_rounding_threshold_bits(rounding_threshold_bits):
         ValueError: If an invalid type or value is provided for rounding_threshold_bits.
         KeyError: If the dict contains keys other than 'n_bits' and 'method'.
     """
-    n_bits_rounding: Union[None, str, int] = None
-    method: Exactness = Exactness.EXACT
+    return {}
+    # n_bits_rounding: Union[None, str, int] = None
+    # method: Exactness = Exactness.EXACT
 
-    # Only process if rounding_threshold_bits is not None
-    if rounding_threshold_bits is not None:
-        if isinstance(rounding_threshold_bits, int):
-            n_bits_rounding = rounding_threshold_bits
-        elif isinstance(rounding_threshold_bits, dict):
-            valid_keys = {"n_bits", "method"}
-            if not valid_keys.issuperset(rounding_threshold_bits.keys()):
-                raise KeyError(
-                    f"Invalid keys in rounding_threshold_bits. "
-                    f"Allowed keys are {sorted(valid_keys)}."
-                )
-            n_bits_rounding = rounding_threshold_bits.get("n_bits")
-            if n_bits_rounding == "auto":
-                raise NotImplementedError("Automatic rounding is not implemented yet.")
-            if not isinstance(n_bits_rounding, int):
-                raise ValueError("n_bits must be an integer.")
-            method = rounding_threshold_bits.get("method", method)
-            if not isinstance(method, Exactness):
-                method_str = method.upper()
-                if method_str in ["EXACT", "APPROXIMATE"]:
-                    method = Exactness[method_str]
-                else:
-                    raise ValueError(
-                        f"{method_str} is not a valid method. Must be one of EXACT, APPROXIMATE."
-                    )
-        else:
-            raise ValueError("Invalid type for rounding_threshold_bits. Must be int or dict.")
+    # # Only process if rounding_threshold_bits is not None
+    # if rounding_threshold_bits is not None:
+    #     if isinstance(rounding_threshold_bits, int):
+    #         n_bits_rounding = rounding_threshold_bits
+    #     elif isinstance(rounding_threshold_bits, dict):
+    #         valid_keys = {"n_bits", "method"}
+    #         if not valid_keys.issuperset(rounding_threshold_bits.keys()):
+    #             raise KeyError(
+    #                 f"Invalid keys in rounding_threshold_bits. "
+    #                 f"Allowed keys are {sorted(valid_keys)}."
+    #             )
+    #         n_bits_rounding = rounding_threshold_bits.get("n_bits")
+    #         if n_bits_rounding == "auto":
+    #             raise NotImplementedError("Automatic rounding is not implemented yet.")
+    #         if not isinstance(n_bits_rounding, int):
+    #             raise ValueError("n_bits must be an integer.")
+    #         method = rounding_threshold_bits.get("method", method)
+    #         if not isinstance(method, Exactness):
+    #             method_str = method.upper()
+    #             if method_str in ["EXACT", "APPROXIMATE"]:
+    #                 method = Exactness[method_str]
+    #             else:
+    #                 raise ValueError(
+    #                     f"{method_str} is not a valid method. Must be one of EXACT, APPROXIMATE."
+    #                 )
+    #     else:
+    #         raise ValueError("Invalid type for rounding_threshold_bits. Must be int or dict.")
 
-        if n_bits_rounding is not None and not 2 <= n_bits_rounding <= 8:
-            raise ValueError("n_bits_rounding must be between 2 and 8 inclusive.")
+    #     if n_bits_rounding is not None and not 2 <= n_bits_rounding <= 8:
+    #         raise ValueError("n_bits_rounding must be between 2 and 8 inclusive.")
 
-        rounding_threshold_bits = {"n_bits": n_bits_rounding, "method": method}
+    #     rounding_threshold_bits = {"n_bits": n_bits_rounding, "method": method}
 
-    return rounding_threshold_bits
+    # return rounding_threshold_bits
