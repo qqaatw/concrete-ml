@@ -110,7 +110,7 @@ def build_quantized_module(
     # bit-width, but for tracing we only take a single one. We need the ONNX tracing batch size to
     # match the batch size during FHE inference which can only be 1 for the moment.
     dummy_input_for_tracing = tuple(
-        torch.from_numpy(val[[0], ::]).float() for val in inputset_as_numpy_tuple
+        torch.from_numpy(val) for val in inputset_as_numpy_tuple
     )
 
     # Create corresponding numpy model
